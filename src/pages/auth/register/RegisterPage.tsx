@@ -15,6 +15,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Toaster } from "@/lib/components/ui/toaster";
 import { Button } from "@/lib/components/ui/button";
 import { useState } from "react";
+import { registerUser } from "@/lib/api/authApi";
 
 // Schemat walidacji
 const FormSchema = z
@@ -50,37 +51,16 @@ export default function RegisterPage() {
   async function onSubmit(data: z.infer<typeof FormSchema>) {
     setIsLoading(true);
 
-    console.log(
-      "Sending data:",
-      JSON.stringify(
-        {
-          email: data.email,
-          name: data.name,
-          password: data.password,
-        },
-        null,
-        2
-      )
-    );
-
     try {
-      const response = await fetch(
-        "https://localhost:8081/api/auth/signup",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            email: data.email,
-            name: data.name,
-            password: data.password,
-          }),
-        }
+      const response = await registerUser(
+        data.email,
+        data.name,
+        data.password
       );
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error("Błąd odpowiedzi backendu:", errorData);
+      if (!response.success) {
+        const errorData = await response.message;
+        console.error("Backend error:", errorData);
         throw new Error(errorData.error || "Something went wrong.");
       }
 

@@ -5,6 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "@/lib/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/lib/components/ui/button";
+import { loginUser } from "@/lib/api/authApi";
 
 const FormSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
@@ -24,20 +25,12 @@ export default function LoginPage() {
 
   async function onSubmit(data: z.infer<typeof FormSchema>) {
     try {
-      const response = await fetch(
-        "https://localhost:8081/api/auth/login",
-        {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(data),
-        }
-      );
+      const response = await loginUser(data.email, data.password);
 
-      if (response.ok) {
-        const userData = await response.json();
+      if (response.success) {
+        const userData = response;
         login(userData);
-        console.log("Otrzymana odpowiedź:", userData);
+        console.log("User logged in:", userData);
 
         toast({
           title: "Logged in successfully",
@@ -47,10 +40,10 @@ export default function LoginPage() {
           navigate("/app");
         }, 1000);
       } else {
-        const errorData = await response.json();
+        const errorData = response.message;
         toast({
           title: "Login failed",
-          description: errorData.message || "Invalid credentials",
+          description: errorData || "Invalid credentials",
           variant: "destructive",
         });
       }

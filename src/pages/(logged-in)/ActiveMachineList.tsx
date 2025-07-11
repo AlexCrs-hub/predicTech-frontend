@@ -6,6 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 import { ToastAction } from "@/lib/components/ui/toast";
 import { useToast } from "@/lib/hooks/use-toast";
 import { Toaster } from "@/lib/components/ui/toaster";
+import { addLine } from "@/lib/api/lineApi";
 
 type Machine = {
   id: string;
@@ -59,17 +60,7 @@ export default function ActiveMachineList() {
 
         const requestBody = { name: selectedLine, userId };
 
-        const response = await fetch(
-          "https://localhost:8081/api/lines",
-          {
-            method: "POST",
-            credentials: "include",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(requestBody),
-          }
-        );
+        const response = await addLine(requestBody);
 
         const data = await response.json();
 
@@ -114,9 +105,9 @@ export default function ActiveMachineList() {
             toast({
               title: titleMessage,
               description: message,
-            }),
-              handleAddLine,
-              setSelectedLine(newLineName);
+            });
+            handleAddLine();
+            setSelectedLine(newLineName);
           }}
           className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
         >

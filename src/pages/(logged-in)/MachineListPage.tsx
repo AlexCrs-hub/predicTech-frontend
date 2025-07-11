@@ -1,10 +1,7 @@
 import { useState, useEffect } from "react";
-import AddMachineCard from "@/lib/components/machineList/AddMachineCard";
-import MachineCard from "@/lib/components/machineList/MachineCard";
-import StatsCard from "@/lib/components/machineList/StatsCard";
 import MachineListElement from "@/lib/components/machineList/MachineListElement";
-// import { getCompanyDetails } from "@/lib/api/company";
-// import type { Machine } from "@/lib/components/machineList/types";
+import { deleteMachine, fetchAllMachines } from "@/lib/api/machineApi";
+import { useNavigate } from "react-router-dom";
 
 type Machine = {
   name: string;
@@ -14,21 +11,18 @@ export default function MachineListPage() {
   const [machines, setMachines] = useState<Machine[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const fetchMachines = async () => {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(
-          "https://localhost:8081/api/machines",
-          { credentials: "include" }
-        );
-
-        const data = await response.json();
+        const response = await fetchAllMachines();
+        const data = response;
         setMachines(data.machines);
       } catch (error) {
-        console.log("lol nie działa");
+        console.log("Error fetching machines:", error);
       } finally {
         setLoading(false);
       }
@@ -36,15 +30,16 @@ export default function MachineListPage() {
     fetchMachines();
   }, []);
 
-  const handleDeleteMachine = (id: string) => {
+  const handleDeleteMachine = async (id: string) => {
+    await deleteMachine(id);
     setMachines((prevMachines) =>
       prevMachines ? prevMachines.filter((machine) => machine._id !== id) : null
     );
   };
 
   console.log(machines);
-  if (loading) return <p>Ładowanie...</p>;
-  if (error) return <p>Błąd: {error}</p>;
+  if (loading) return <p>Loading...</p>;
+  if (error) return <p>Error: {error}</p>;
 
   return (
     <div className="gap-8 flex flex-col">
@@ -69,6 +64,8 @@ export default function MachineListPage() {
             name={machine.name}
             _id={machine._id}
             onDelete={handleDeleteMachine}
+            navigate={navigate}
+            key={machine._id}
           />
         ))}
       </div>

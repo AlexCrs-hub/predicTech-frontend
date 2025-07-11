@@ -15,19 +15,10 @@ import {
 } from "@/lib/components/ui/form";
 import { Input } from "@/lib/components/ui/input";
 import { Toaster } from "../ui/toaster";
-import { getCompanyDetails } from "@/lib/api/company";
 import { useEffect, useState } from "react";
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from "@radix-ui/react-select";
+import { fetchUserLines } from "@/lib/api/lineApi";
+import { addMachine } from "@/lib/api/machineApi";
 
-interface CompanyProps {
-  company_id: number;
-}
 
 const FormSchema = z.object({
   line_id: z.string().min(1, { message: "Production line is required." }),
@@ -44,14 +35,9 @@ export default function MachineInputForm() {
   useEffect(() => {
     const fetchLines = async () => {
       try {
-        const response = await fetch(
-          "https://localhost:8081/api/lines",
-          { credentials: "include" }
-        );
+        const response = await fetchUserLines();
 
-        const data = await response.json();
-
-        setLines(data.data);
+        setLines(response.data);
       } catch (error) {
         console.error("Error fetching lines:", error);
       } finally {
@@ -76,17 +62,10 @@ export default function MachineInputForm() {
     );
 
     try {
-      const response = await fetch(
-        `https://localhost:8081/api/machines/line/${data.line_id}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ name: data.machine_name }),
-        }
+      const response = await addMachine(
+        data.line_id,
+        data.machine_name
       );
-
-      const result = await response.json();
 
       console.log(
         "Sending request to:",
@@ -97,8 +76,8 @@ export default function MachineInputForm() {
         JSON.stringify({ machine_name: machineName })
       );
 
-      if (!response.ok)
-        throw new Error(result.error || "Failed to add machine.");
+      if (!response.message)
+        throw new Error(response.error || "Failed to add machine.");
 
       toast({
         title: "Success",

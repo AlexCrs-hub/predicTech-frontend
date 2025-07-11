@@ -16,6 +16,9 @@ import {
 import { Input } from "@/lib/components/ui/input";
 import { Toaster } from "../ui/toaster";
 import { useEffect, useState } from "react";
+import { fetchUserLines } from "@/lib/api/lineApi";
+import { fetchMachinesByLine } from "@/lib/api/machineApi";
+import { addSensor } from "@/lib/api/sensorApi";
 
 
 const FormSchema = z.object({
@@ -46,14 +49,9 @@ export default function SensorInputForm() {
     useEffect(() => {
         const fetchLines = async () => {
         try {
-            const response = await fetch(
-            "https://localhost:8081/api/lines",
-            { credentials: "include" }
-            );
+            const response = await fetchUserLines();
 
-            const data = await response.json();
-
-            setLines(data.data);
+            setLines(response.data);
         } catch (error) {
             console.error("Error fetching lines:", error);
         } finally {
@@ -74,13 +72,9 @@ export default function SensorInputForm() {
         setLoadingMachines(true);
         const fetchMachines = async () => {
             try{
-                const response = await fetch(
-                    `https://localhost:8081/api/machines/line/${lineId}`,
-                    { credentials: "include" }
-                );
-                const data = await response.json();
-                console.log("Fetched machines:", data.machines);
-                setMachines(data.machines || []);
+                const response = await fetchMachinesByLine(lineId);
+                console.log("Fetched machines:", response.machines);
+                setMachines(response.machines || []);
                 form.setValue("machine_id", ""); // Reset machine_id when line changes
             } catch (error) {
                 console.error("Error fetching machines:", error);
@@ -100,33 +94,26 @@ export default function SensorInputForm() {
         );
 
         try {
-        const response = await fetch(
-            `https://localhost:8081/api/sensors`,
-            {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ name: data.sensor_name, machine: data.machine_id }),
-            }
-        );
+            const response = await addSensor(
+                data.machine_id,
+                data.sensor_name
+            );
+            const responseData = await response.json();
+            if (response.status !== 201)
+                throw new Error(responseData.message || "Failed to add sensor.");
 
-        const result = await response.json();
-        
-        if (!response.ok)
-            throw new Error(result.error || "Failed to add sensor.");
-
-        toast({
-            title: "Success",
-            description: "Sensor has been added successfully!",
-        });
-        form.reset();
+            toast({
+                title: "Success",
+                description: "Sensor has been added successfully!",
+            });
+            form.reset();
         } catch (error) {
-        console.error("Fetch error: ", error);
-        toast({
-            title: "Error",
-            description: "Something went wrong.",
-            variant: "destructive",
-        });
+            console.error("Fetch error: ", error);
+            toast({
+                title: "Error",
+                description: "Something went wrong.",
+                variant: "destructive",
+            });
         }
     }
 

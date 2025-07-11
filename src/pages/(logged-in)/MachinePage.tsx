@@ -14,10 +14,6 @@ import { useEffect } from "react";
 import { getCompanyDetails } from "@/lib/api/company";
 import { useState } from "react";
 
-// interface MachineProps {
-
-//   machinesData: Machine[];
-// }
 
 export default function MachinePage() {
   const [machine, setMachine] = useState<any>(null); // Stan na przechowywanie danych firmy

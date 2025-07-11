@@ -16,6 +16,7 @@ import ActiveMachineList from "./pages/(logged-in)/ActiveMachineList";
 import { AuthProvider } from "./context/AuthContext";
 import PrivateRoute from "./lib/components/PrivateRoute";
 import AddSensorPage from "./pages/(logged-in)/AddSensorPage";
+import SensorGraphsPage from "./pages/(logged-in)/SensorGraphsPage";
 
 const router = createBrowserRouter([
   { path: "/", element: <LandingPage />, errorElement: <NotFound /> },
@@ -32,6 +33,7 @@ const router = createBrowserRouter([
       { path: "/app/add-sensor", element: <AddSensorPage /> },
       { path: "/app/report", element: <AddReportPage /> },
       { path: "/app/machines/:id", element: <MachinePage /> },
+      { path: "/app/sensors", element: <SensorGraphsPage /> }
     ],
   },
 ]);

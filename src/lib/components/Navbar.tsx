@@ -1,11 +1,21 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import predicTech from "@/lib/assets/logo_predic.svg";
 import ThemeToggle from "./ThemeToggle";
 import { useAuth } from "@/context/AuthContext";
+import { NAVIGATION_ROUTES } from "../constants/NavigationRoutes";
+import { logoutUser } from "../api/authApi";
 
 export default function Navbar() {
-  const { getUser } = useAuth();
+  const { getUser, logout } = useAuth();
   const userData = getUser();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logoutUser();
+    logout();
+    navigate("/login");
+  };
+
   return (
     <nav className="fixed inset-x-0 top-0 p-2 text-white shadow-sm bg-predic z-40">
       <div className="w-full max-w-7xl mx-auto px-4">
@@ -15,61 +25,30 @@ export default function Navbar() {
             <span className="w-1/2 text-xl font-medium">PredicTech</span>
           </Link>
           <nav className="hidden md:flex gap-6">
-            <Link
-              to="/app"
-              className="font-medium flex items-center text-sm transition-colors hover:underline"
-              //   prefetch={false}
-            >
-              Dashboard
-            </Link>
-            <Link
-              to="/app/machine-list"
-              className="font-medium flex items-center text-sm transition-colors hover:underline"
-              //   prefetch={false}
-            >
-              Machines
-            </Link>
-            <Link
-              to="/app/active-machines"
-              className="font-medium flex items-center text-sm transition-colors hover:underline"
-              //   prefetch={false}
-            >
-              Active Machines
-            </Link>
-            <Link
-              to="/app/add-machine"
-              className="font-medium flex items-center text-sm transition-colors hover:underline"
-              //   prefetch={false}
-            >
-              Add machine
-            </Link>
-            <Link
-              to="/app/add-sensor"
-              className="font-medium flex items-center text-sm transition-colors hover:underline"
-              //   prefetch={false}
-            >
-              Add sensor
-            </Link>
-            <Link
-              to="/app/report"
-              className="font-medium flex items-center text-sm transition-colors hover:underline"
-              //   prefetch={false}
-            >
-              Report
-            </Link>
-
-            <Link
-              to="#"
-              className="font-medium flex items-center text-sm transition-colors hover:underline"
-              //   prefetch={false}
-            >
-              Contact
-            </Link>
+            {NAVIGATION_ROUTES.map((route) => (
+              <Link
+                key={route.to}
+                to={route.to}
+                className="font-medium flex items-center text-sm transition-colors hover:underline"
+              >
+                {route.label}
+              </Link>
+            ))}
           </nav>
           <div className="p-6">
             <ThemeToggle />
           </div>
-          {userData?.user.name}
+          {userData?.user.name && (
+              <>
+                <span className="ml-2">{userData.user.name}</span>
+                <button
+                  onClick={handleLogout}
+                  className="ml-4 px-3 py-1 rounded bg-white text-predic font-medium text-sm hover:bg-gray-200 transition"
+                >
+                  Logout
+                </button>
+              </>
+            )}
         </div>
       </div>
     </nav>

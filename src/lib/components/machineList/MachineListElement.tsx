@@ -3,30 +3,21 @@ type Machine = {
   name: string;
   _id: string;
   onDelete: (id: string) => void;
+  navigate: (path: string) => void;
 };
-export default function MachineListElement({ name, _id, onDelete }: Machine) {
+export default function MachineListElement({ name, _id, onDelete, navigate }: Machine) {
   const handleDelete = async () => {
     try {
-      const response = await fetch(
-        `https://localhost:8081/api/machines/${_id}`,
-        {
-          method: "DELETE",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to delete machine.");
-      }
-
       onDelete(_id);
     } catch (error) {
       console.error("Error deleting machine:", error);
     }
   };
+
+  const goToSensors = () => {
+    navigate(`/app/sensors?machineId=${_id}`);
+  }
+
   return (
     <div className="grid w-full border rounded p-4 items-center mb-4 grid-cols-5">
       <span className="w-full text-start">{name}</span>
@@ -37,9 +28,12 @@ export default function MachineListElement({ name, _id, onDelete }: Machine) {
         </span>
       </div>
       <span className="w-full text-center">5h 32m</span>
-      <div className="w-full flex items-center justify-end">
+      <div className="w-full flex items-center justify-end space-x-4">
         <Button className="rounded bg-predic" onClick={handleDelete}>
           Delete
+        </Button>
+        <Button className="rounded bg-predic" onClick={goToSensors}>
+          Sensors
         </Button>
       </div>
     </div>
