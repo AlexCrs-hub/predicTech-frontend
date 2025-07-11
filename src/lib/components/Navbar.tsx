@@ -37,6 +37,13 @@ export default function Navbar() {
               Active Machines
             </Link>
             <Link
+              to="/app/add-machine"
+              className="font-medium flex items-center text-sm transition-colors hover:underline"
+              //   prefetch={false}
+            >
+              Add machine
+            </Link>
+            <Link
               to="/app/add-sensor"
               className="font-medium flex items-center text-sm transition-colors hover:underline"
               //   prefetch={false}

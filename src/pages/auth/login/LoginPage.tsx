@@ -25,7 +25,7 @@ export default function LoginPage() {
   async function onSubmit(data: z.infer<typeof FormSchema>) {
     try {
       const response = await fetch(
-        "https://backend-production-1467.up.railway.app/api/auth/login",
+        "https://localhost:8081/api/auth/login",
         {
           method: "POST",
           credentials: "include",

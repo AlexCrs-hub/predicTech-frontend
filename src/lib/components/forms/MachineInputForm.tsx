@@ -45,7 +45,7 @@ export default function MachineInputForm() {
     const fetchLines = async () => {
       try {
         const response = await fetch(
-          "https://backend-production-1467.up.railway.app/api/lines",
+          "https://localhost:8081/api/lines",
           { credentials: "include" }
         );
 
@@ -77,7 +77,7 @@ export default function MachineInputForm() {
 
     try {
       const response = await fetch(
-        `https://backend-production-1467.up.railway.app/api/machines/line/${data.line_id}`,
+        `https://localhost:8081/api/machines/line/${data.line_id}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -90,7 +90,7 @@ export default function MachineInputForm() {
 
       console.log(
         "Sending request to:",
-        `https://backend-production-1467.up.railway.app/api/machines/line/${data.line_id}`
+        `https://localhost:8081/api/machines/line/${data.line_id}`
       );
       console.log(
         "Request body:",

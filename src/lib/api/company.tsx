@@ -4,11 +4,11 @@ export const getCompanyDetails = async (companyId: number) => {
       `http://127.0.0.1:5000/companies/${companyId}`
     );
     if (!response.ok) {
-      throw new Error("Nie udało się pobrać danych");
+      throw new Error("Failed to fetch data");
     }
     const company = await response.json();
     return company; // Zwraca dane firmy
   } catch (error) {
-    return { error: "Nie udało się pobrać danych" }; // Zwraca błąd
+    return { error: "Failed to fetch data" }; // Returns error
   }
 };

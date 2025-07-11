@@ -21,7 +21,7 @@ export default function MachineListPage() {
       setError(null);
       try {
         const response = await fetch(
-          "https://backend-production-1467.up.railway.app/api/machines",
+          "https://localhost:8081/api/machines",
           { credentials: "include" }
         );
 

@@ -51,7 +51,7 @@ export default function RegisterPage() {
     setIsLoading(true);
 
     console.log(
-      "Wysyłane dane:",
+      "Sending data:",
       JSON.stringify(
         {
           email: data.email,
@@ -65,7 +65,7 @@ export default function RegisterPage() {
 
     try {
       const response = await fetch(
-        "https://backend-production-1467.up.railway.app/api/auth/signup",
+        "https://localhost:8081/api/auth/signup",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

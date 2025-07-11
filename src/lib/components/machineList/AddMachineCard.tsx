@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 
 export default function AddMachineCard() {
   return (
-    <Link to="/add-sensor">
+    <Link to="/app/add-machine">
       <Card className="dark:bg-zinc-900 border-zinc-400 h-56">
         <CardHeader className="font-medium text-center h-16 text-lg">
           Add new connection

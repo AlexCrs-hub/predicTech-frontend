@@ -12,8 +12,8 @@ type Machine = {
 };
 
 export default function ActiveMachineList() {
-  const [lines, setLines] = useState<string[]>(["1", "2", "3"]);
-  const [selectedLine, setSelectedLine] = useState<string>("1");
+  const [lines, setLines] = useState<string[]>([]);
+  const [selectedLine, setSelectedLine] = useState<string>("");
   const [newLineName, setNewLineName] = useState<string>(""); // Nowy input
   const [machines, setMachines] = useState<Machine[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -35,7 +35,9 @@ export default function ActiveMachineList() {
     if (newLineName && !lines.includes(newLineName)) {
       setLines([...lines, newLineName]);
       setSelectedLine(newLineName);
-      setNewLineName(""); // Czyścimy input po dodaniu
+      setTitleMessage("New line added successfully!");
+      setNewLineName(""); 
+      // Clear the input after adding
     }
   };
 
@@ -58,7 +60,7 @@ export default function ActiveMachineList() {
         const requestBody = { name: selectedLine, userId };
 
         const response = await fetch(
-          "https://backend-production-1467.up.railway.app/api/lines",
+          "https://localhost:8081/api/lines",
           {
             method: "POST",
             credentials: "include",

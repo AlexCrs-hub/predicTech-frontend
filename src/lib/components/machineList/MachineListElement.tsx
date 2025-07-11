@@ -8,9 +8,10 @@ export default function MachineListElement({ name, _id, onDelete }: Machine) {
   const handleDelete = async () => {
     try {
       const response = await fetch(
-        `https://backend-production-1467.up.railway.app/api/machines/${_id}`,
+        `https://localhost:8081/api/machines/${_id}`,
         {
           method: "DELETE",
+          credentials: "include",
           headers: {
             "Content-Type": "application/json",
           },

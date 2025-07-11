@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, ReactNode } from "react";
 
-// Typ danych użytkownika
+// User data type
 interface User {
   createdAt: string;
   email: string;
@@ -20,7 +20,7 @@ interface UserData {
   user: User;
 }
 
-// Typ kontekstu
+// Context type definition
 interface AuthContextType {
   user: UserData | null;
   login: (userData: UserData) => void;
@@ -28,10 +28,10 @@ interface AuthContextType {
   getUser: () => UserData | null;
 }
 
-// Tworzymy kontekst
+// Create context
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Provider kontekstu
+// Provider context
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<UserData | null>(() => {
     const savedUser = localStorage.getItem("user");
@@ -48,7 +48,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     localStorage.removeItem("user");
   };
 
-  // Funkcja zwracająca dane użytkownika
+  // Function returning user data
   const getUser = () => user;
 
   return (
@@ -58,7 +58,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   );
 };
 
-// Hook do pobierania kontekstu
+// Hook to get the context
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) throw new Error("useAuth must be used within an AuthProvider");
