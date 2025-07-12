@@ -12,6 +12,5 @@ export async function fetchSensorsByMachine(machineId: string) {
   const response = await fetch(`https://localhost:8081/api/sensors/machine/${machineId}`, {
     credentials: "include",
   });
-  console.log(response);
   return response.json();
 }

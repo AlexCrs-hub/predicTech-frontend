@@ -14,6 +14,9 @@ export default function LandingNavbar() {
             <Link to="/login" className="font-medium text-xl">
               Login
             </Link>
+            <Link to="/register" className="font-medium text-xl">
+              Register
+            </Link>
             <Link to="/about" className="font-medium text-xl">
               About us
             </Link>

@@ -17,6 +17,7 @@ import { AuthProvider } from "./context/AuthContext";
 import PrivateRoute from "./lib/components/PrivateRoute";
 import AddSensorPage from "./pages/(logged-in)/AddSensorPage";
 import SensorGraphsPage from "./pages/(logged-in)/SensorGraphsPage";
+import { WebSocketProvider } from "./context/WebSocketContext";
 
 const router = createBrowserRouter([
   { path: "/", element: <LandingPage />, errorElement: <NotFound /> },
@@ -41,7 +42,9 @@ const router = createBrowserRouter([
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <AuthProvider>
-      <RouterProvider router={router} />
+      <WebSocketProvider>
+        <RouterProvider router={router} />
+      </WebSocketProvider>
     </AuthProvider>
   </StrictMode>
 );
