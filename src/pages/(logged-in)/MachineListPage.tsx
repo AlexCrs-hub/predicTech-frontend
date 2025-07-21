@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import MachineListElement from "@/lib/components/machineList/MachineListElement";
-import { deleteMachine, fetchAllMachines } from "@/lib/api/machineApi";
-import { useNavigate } from "react-router-dom";
+import { deleteMachine, fetchAllMachines, fetchMachinesByLine } from "@/lib/api/machineApi";
+import { useLocation, useNavigate } from "react-router-dom";
 
 type Machine = {
   name: string;
@@ -11,6 +11,9 @@ export default function MachineListPage() {
   const [machines, setMachines] = useState<Machine[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { search } = useLocation();
+  const queryParams = new URLSearchParams(search);
+  const lineId = queryParams.get("lineId") || "";
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -18,7 +21,7 @@ export default function MachineListPage() {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetchAllMachines();
+        const response = await fetchMachinesByLine(lineId);
         const data = response;
         setMachines(data.machines);
       } catch (error) {
@@ -36,8 +39,6 @@ export default function MachineListPage() {
       prevMachines ? prevMachines.filter((machine) => machine._id !== id) : null
     );
   };
-
-  console.log(machines);
   if (loading) return <p>Loading...</p>;
   if (error) return <p>Error: {error}</p>;
 

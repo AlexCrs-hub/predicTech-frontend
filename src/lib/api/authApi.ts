@@ -1,5 +1,7 @@
+import { API_URLS } from "../constants/ApiUrls";
+
 export async function registerUser(email: string, name: string, password: string) {
-  const response = await fetch("https://localhost:8081/api/auth/signup", {
+  const response = await fetch(`${API_URLS.BACKEND_URL}/auth/signup`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
@@ -9,7 +11,7 @@ export async function registerUser(email: string, name: string, password: string
 }
 
 export async function loginUser(email: string, password: string) {
-  const response = await fetch("https://localhost:8081/api/auth/login", {
+  const response = await fetch(`${API_URLS.BACKEND_URL}/auth/login`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
@@ -19,7 +21,7 @@ export async function loginUser(email: string, password: string) {
 }
 
 export async function logoutUser() {
-  const response = await fetch("https://localhost:8081/api/logout", {
+  const response = await fetch(`${API_URLS.BACKEND_URL}/auth/logout`, {
     method: "POST",
     credentials: "include",
   });

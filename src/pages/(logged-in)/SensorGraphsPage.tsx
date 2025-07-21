@@ -6,7 +6,6 @@ import { useLocation } from "react-router-dom";
 import { ResponsiveContainer, CartesianGrid, XAxis, YAxis, Tooltip, Line, LineChart } from "recharts";
 
 interface Reading {
-    _id: string;
     measurement: number;
     measuredAt: Date;
 }
@@ -41,28 +40,58 @@ export default function SensorGraphsPage() {
     }, [machineId]);
 
     useEffect(() => {
-    // Only fetch readings if sensors are loaded and not empty
-    if (sensors.length === 0) return;
+        // Only fetch readings if sensors are loaded and not empty
+        if (sensors.length === 0) return;
 
-    const fetchAllReadings = async () => {
-        setLoading(true);
-        try {
-            const sensorsWithReadings = await Promise.all(
-                sensors.map(async (sensor) => {
-                    const readings = await fetchReadingsForSensor(sensor._id);
-                    return { ...sensor, readings };
-                })
-            );
-            setSensors(sensorsWithReadings);
+        const fetchAllReadings = async () => {
+            setLoading(true);
+            try {
+                const sensorsWithReadings = await Promise.all(
+                    sensors.map(async (sensor) => {
+                        const readings = await fetchReadingsForSensor(sensor._id);
+                        return { ...sensor, readings };
+                    })
+                );
+                setSensors(sensorsWithReadings);
+            } catch (error) {
+                console.error("Error fetching readings:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchAllReadings();
+    }, [JSON.stringify(sensors.map(s => s._id))]); // Only run when sensor IDs change
+
+    useEffect(() => {
+        // Handle incoming messages from WebSocket
+       if (!message) return;
+
+       try{
+        const parsed = JSON.parse(message);
+        const measuredAt = new Date(parsed.measuredAt);
+        const {measuredAt: _, ...sensorData} = parsed; // Exclude measuredAt from sensor data
+
+        setSensors(prevSensors =>
+            prevSensors.map(sensor => {
+                const newValue = sensorData[sensor.name];
+                if (newValue === undefined) return sensor;
+
+                const newReading = {
+                    measurement: newValue,
+                    measuredAt: measuredAt,
+                };
+
+                return {
+                    ...sensor,
+                    readings: [...sensor.readings, newReading],
+                };
+            })
+        );
         } catch (error) {
-            console.error("Error fetching readings:", error);
-        } finally {
-            setLoading(false);
+            console.error("Error parsing WebSocket message:", error);
         }
-    };
-
-    fetchAllReadings();
-}, [JSON.stringify(sensors.map(s => s._id))]); // Only run when sensor IDs change
+    }, [message]);
 
     return (
         <div className="flex flex-col items-center min-h-screen pt-16 px-2 w-full">
@@ -70,7 +99,7 @@ export default function SensorGraphsPage() {
             {loading ? (
                 <p>Loading sensors...</p>
             ) : (
-                 <div className="w-full flex flex-col gap-8">
+                <div className="w-full flex flex-col gap-8">
                     {sensors.map((sensor: Sensor) => (
                         <div key={sensor._id} className="mb-8 w-full max-w-2xl mx-auto">
                             <h2 className="text-lg font-semibold mb-2">{sensor.name}</h2>
@@ -95,11 +124,6 @@ export default function SensorGraphsPage() {
                     ))}
                 </div>
             )}
-            <ul>
-                {message.map((msg, idx) => (
-                    <li key={idx}>{msg}</li>
-                ))}
-            </ul>
         </div>
     );
 }

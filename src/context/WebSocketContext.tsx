@@ -5,14 +5,14 @@ import { Client, IMessage } from '@stomp/stompjs';
 import SockJS from 'sockjs-client/dist/sockjs';
 
 interface WebSocketContextType {
-    message: string[];
+    message: string;
 
 }
 
 const WebSocketContext = createContext<WebSocketContextType | undefined>(undefined);
 
 export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [messages, setMessages] = useState<string[]>([]);
+    const [messages, setMessages] = useState<string>("");
     const clientRef = useRef<Client | null>(null);
 
     useEffect(() => {
@@ -23,7 +23,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         onConnect: () => {
             client.subscribe("/topic/mqtt-data", (message: IMessage) => {
                 console.log("Received message:", message.body);
-                setMessages((prev) => [...prev, message.body]);
+                setMessages(message.body || "");
             });
         },
         });

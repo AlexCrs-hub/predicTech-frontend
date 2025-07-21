@@ -14,7 +14,6 @@ export interface StatsCardProps {
 export default function Dashboard() {
   const { getUser } = useAuth();
   const userData = getUser();
-  console.log(userData?.user);
   return (
     <div className="w-full py-4 gap-8 flex flex-col">
       <div className="grid grid-cols-3 gap-8">

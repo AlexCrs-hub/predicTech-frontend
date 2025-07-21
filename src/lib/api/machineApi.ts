@@ -1,19 +1,21 @@
+import { API_URLS } from "../constants/ApiUrls";
+
 export async function fetchAllMachines() {
-  const response = await fetch("https://localhost:8081/api/machines", {
+  const response = await fetch(`${API_URLS.BACKEND_URL}/machines`, {
     credentials: "include",
   });
   return response.json();
 }
 
 export async function fetchMachinesByLine(lineId: string) {
-  const response = await fetch(`https://localhost:8081/api/machines/line/${lineId}`, {
+  const response = await fetch(`${API_URLS.BACKEND_URL}/machines/line/${lineId}`, {
     credentials: "include",
   });
   return response.json();
 }
 
 export async function addMachine(lineId: string, machineName: string) {
-  const response = await fetch(`https://localhost:8081/api/machines/line/${lineId}`, {
+  const response = await fetch(`${API_URLS.BACKEND_URL}/machines/line/${lineId}`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
@@ -23,7 +25,7 @@ export async function addMachine(lineId: string, machineName: string) {
 }
 
 export async function deleteMachine(machineId: string) {
-  const response = await fetch(`https://localhost:8081/api/machines/${machineId}`, {
+  const response = await fetch(`${API_URLS.BACKEND_URL}/machines/${machineId}`, {
     method: "DELETE",
     credentials: "include",
     headers: { "Content-Type": "application/json" },

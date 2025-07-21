@@ -30,7 +30,6 @@ export default function LoginPage() {
       if (response.success) {
         const userData = response;
         login(userData);
-        console.log("User logged in:", userData);
 
         toast({
           title: "Logged in successfully",
