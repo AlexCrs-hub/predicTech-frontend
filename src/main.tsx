@@ -16,7 +16,7 @@ import ActiveMachineList from "./pages/(logged-in)/ActiveMachineList";
 import { AuthProvider } from "./context/AuthContext";
 import PrivateRoute from "./lib/components/PrivateRoute";
 import AddSensorPage from "./pages/(logged-in)/AddSensorPage";
-import SensorGraphsPage from "./pages/(logged-in)/SensorGraphsPage";
+// import SensorGraphsPage from "./pages/(logged-in)/SensorGraphsPage";
 import { WebSocketProvider } from "./context/WebSocketContext";
 import ProductionLinesPage from "./pages/(logged-in)/ProductionLinesPage";
 
@@ -34,8 +34,8 @@ const router = createBrowserRouter([
       { path: "/app/add-machine", element: <AddMachinePage /> },
       { path: "/app/add-sensor", element: <AddSensorPage /> },
       { path: "/app/report", element: <AddReportPage /> },
-      { path: "/app/machines/:id", element: <MachinePage /> },
-      { path: "/app/sensors", element: <SensorGraphsPage /> },
+      { path: "/app/machine", element: <MachinePage /> },
+      // { path: "/app/sensors", element: <SensorGraphsPage /> },
       { path: "/app/production-lines", element: <ProductionLinesPage /> }
     ],
   },

@@ -13,6 +13,7 @@ interface MachineProps {
   machinesData: Machine[];
 }
 export default function MachineCard({ machinesData }: MachineProps) {
+
   return (
     <>
       {console.log(machinesData)}
@@ -39,14 +40,6 @@ export default function MachineCard({ machinesData }: MachineProps) {
               </svg>
             </CardHeader>
             <CardContent className="w-full flex gap-1 flex-col justify-end h-44">
-              {machine.state == true ? (
-                <div className="flex gap-4">
-                  <p>time on:</p>
-                  {machine.timeOn.toLocaleTimeString()}
-                </div>
-              ) : (
-                ""
-              )}
               <div className="grid grid-cols-4 gap-2 ">
                 <MachineButtons
                   state={machine.state}

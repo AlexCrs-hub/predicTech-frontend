@@ -1,7 +1,6 @@
-export interface Machine {
-  machine_id: number;
+export type Machine = {
   name: string;
-  state: boolean;
-  timeOn: Date;
-  dataset: number[];
-}
+  _id: string;
+  liveKw: number;
+  status: "running" | "stopped" | "idle";
+};

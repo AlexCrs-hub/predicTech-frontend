@@ -32,3 +32,10 @@ export async function deleteMachine(machineId: string) {
   });
   return response.json();
 }
+
+export async function fetchMachineById(machineId: string) {
+  const response = await fetch(`${API_URLS.BACKEND_URL}/machines/${machineId}`, {
+    credentials: "include",
+  });
+  return response.json();
+}
