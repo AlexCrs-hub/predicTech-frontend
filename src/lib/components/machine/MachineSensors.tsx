@@ -15,7 +15,7 @@ interface Sensor {
     readings: Reading[];
 }
 
-export default function MachineSensors(props: { machineId: string }) {
+export default function MachineSensors(props: { machineId: string, halfHeight?: boolean }) {
     const [sensors, setSensors] = useState<Sensor[]>([]);
     const [loading, setLoading] = useState(true);
     const { message } = useWebSocket();
@@ -90,12 +90,12 @@ export default function MachineSensors(props: { machineId: string }) {
     }, [message]);
 
     return (
-        <div className="flex flex-col items-center min-h-screen pt-16 px-2 w-full">
-            <h1 className="text-2xl font-bold mb-4">Sensor Graphs Page</h1>
+        <div className={`flex flex-col items-center px-2 w-full ${props.halfHeight ? 'h-[50vh]' : 'h-screen'}`}>
+            <h1 className="text-2xl font-bold mb-4">Machine sensors</h1>
             {loading ? (
                 <p>Loading sensors...</p>
             ) : (
-                <div className="w-full flex flex-col gap-8">
+                <div className="w-full flex-1 overflow-y-auto max-h-[calc(100vh-4rem)] flex flex-col gap-8">
                     {sensors.map((sensor: Sensor) => (
                         <div key={sensor._id} className="mb-8 w-full max-w-2xl mx-auto">
                             <h2 className="text-lg font-semibold mb-2">{sensor.name}</h2>

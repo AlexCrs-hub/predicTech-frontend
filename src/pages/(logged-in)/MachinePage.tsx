@@ -8,10 +8,11 @@ import { useLocation } from "react-router-dom";
 
 export default function MachinePage() {
   const [machine, setMachine] = useState(null);
-   const [error, setError] = useState("");
+  const [error, setError] = useState("");
   const { search } = useLocation();
   const queryParams = new URLSearchParams(search);
   const machineId = queryParams.get("machineId") || "";
+  const halfHeight = true;
 
   useEffect(() => {
     const fetchMachine = async () => {
@@ -29,7 +30,7 @@ export default function MachinePage() {
     <div className="w-full grid grid-cols-2 gap-4 p-4">
       {error !== "" && <div className="col-span-2 text-red-500">{error}</div>}
       <MachineDetails machine={machine} />
-      <MachineSensors machineId={machineId} />
+      <MachineSensors machineId={machineId} halfHeight={halfHeight}/>
     </div>
   );
 }

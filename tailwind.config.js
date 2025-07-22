@@ -31,6 +31,9 @@ module.exports = {
 		animation: {
 			'pulse-glow': 'pulse-glow 1.5s infinite ease-in-out',
 		},
+		height: {
+      		'half-screen': '50vh',
+    	},
   	}
   },
   plugins: [require("tailwindcss-animate")],

@@ -95,7 +95,7 @@ export default function SensorGraphsPage() {
 
     return (
         <div className="flex flex-col items-center min-h-screen pt-16 px-2 w-full">
-            <h1 className="text-2xl font-bold mb-4">Sensor Graphs Page</h1>
+            <h1 className="text-2xl font-bold mb-4">Machine sensors</h1>
             {loading ? (
                 <p>Loading sensors...</p>
             ) : (
