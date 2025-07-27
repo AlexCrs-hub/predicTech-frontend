@@ -39,3 +39,22 @@ export async function fetchMachineById(machineId: string) {
   });
   return response.json();
 }
+
+export async function getMachineReport(machineId: string, startDate: string, endDate: string) {
+  const response = await fetch(`${API_URLS.BACKEND_URL}/machines/report?id=${machineId}&start=${startDate}&end=${endDate}`, {
+    credentials: "include",
+  });
+  if (!response.ok) {
+    throw new Error("Failed to download CSV");
+  }
+
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `machine_${machineId}_report.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}

@@ -17,43 +17,71 @@ import {
 import { Input } from "@/lib/components/ui/input";
 import { Toaster } from "../ui/toaster";
 import jsPDF from "jspdf";
+import { useState, useEffect } from "react";
+import { fetchAllMachines, getMachineReport } from "@/lib/api/machineApi";
 
 const FormSchema = z.object({
-  machineName: z.string().min(2).max(100),
-  warning: z.string().min(2,{
+  machine_id: z
+    .string()
+    .min(1, { message: "Machine is required." }),
+  warning: z.string().min(2, {
     message: "Invalid warning message.",
   }).max(100),
   messageText: z.string().min(6, {
     message: "Reason of report must be at least 6 characters.",
   }),
+  startDate: z.string().min(1, { message: "Start date is required." }),
+  endDate: z.string().min(1, { message: "End date is required." }),
 });
 
 export default function MachineReportForm() {
+
+  const [machines, setMachines] = useState<{ _id: string; name: string }[]>([]);
+  const [loadingMachines, setLoadingMachines] = useState(false);
+
   const form = useForm<z.infer<typeof FormSchema>>({
     resolver: zodResolver(FormSchema),
     defaultValues: {
-      machineName: "",
+      machine_id: "",
       warning: "",
       messageText: "",
+      startDate: new Date().toISOString().split("T")[0],
+      endDate: new Date().toISOString().split("T")[0],
     },
   });
 
-  function onSubmit(data: z.infer<typeof FormSchema>) {
-    const doc = new jsPDF();
-    doc.setFontSize(16);
-    doc.text("Machine Report", 10, 15);
-    doc.setFontSize(12);
-    doc.text(`Machine Name: ${data.machineName}`, 10, 30);
-    doc.text(`Warning: ${data.warning}`, 10, 40);
-    doc.text(`Message: ${data.messageText}`, 10, 50);
-    doc.text(data.messageText, 10, 60, { maxWidth: 180 });
-    doc.save(`machine_report_${data.machineName}.pdf`);
-    toast({
-      title: "Form submitted",
-      description: "Your report has been sent successfully.",
-    });
-    console.log(data);
+  async function onSubmit(data: z.infer<typeof FormSchema>) {
+    // const doc = new jsPDF();
+    // doc.setFontSize(16);
+    // doc.text("Machine Report", 10, 15);
+    // doc.setFontSize(12);
+    // toast({
+    //   title: "Form submitted",
+    //   description: "Your report has been sent successfully.",
+    // });
+    // console.log(data);
+    const { machine_id, warning, messageText, startDate, endDate } = data;
+    const response = await getMachineReport(machine_id, startDate, endDate);
   }
+
+  useEffect(() => {
+    const fetchMachines = async () => {
+      try {
+        setLoadingMachines(true);
+        const response = await fetchAllMachines();
+        if(!response || !response.machines) {
+          throw new Error("No machines found");
+        }
+        setMachines(response.machines);
+      } catch (error) {
+        console.error("Error fetching machines:", error);
+      } finally {
+        setLoadingMachines(false);
+      }
+    };
+    fetchMachines();
+  }, []);
+
   return (
     <Form {...form}>
       <form
@@ -61,18 +89,33 @@ export default function MachineReportForm() {
         className="w-2/3 space-y-6 flex flex-col items-center"
       >
         <FormField
-          control={form.control}
-          name="machineName"
-          render={({ field }) => (
-            <FormItem className="w-full">
-              <FormLabel>Machine Name</FormLabel>
-              <FormControl>
-                <Input placeholder="Machine Name" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+                control={form.control}
+                name="machine_id"
+                render={({ field }) => (
+                <FormItem className="w-full">
+                    <FormLabel>Machine</FormLabel>
+                    <FormControl>
+                    <select
+                        {...field}
+                        className="border rounded-lg p-2 w-full bg-white"
+                        onChange={(e) => field.onChange(e.target.value)}
+                        value={field.value}
+                    >
+                        <option value="" disabled>
+                        {loadingMachines ? "Loading..." : "Select a machine"}
+                        </option>
+                        {!loadingMachines &&
+                        machines.map((machine) => (
+                            <option key={machine._id} value={machine._id}>
+                                {machine.name}
+                            </option>
+                        ))}
+                    </select>
+                    </FormControl>
+                    <FormMessage />
+                </FormItem>
+            )}
+          />
 
         <FormField
           control={form.control}
@@ -102,6 +145,42 @@ export default function MachineReportForm() {
                 <Input
                   type="text"
                   placeholder="Describe the error"
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="startDate"
+          render={({ field }) => (
+            <FormItem className="w-full">
+              <FormLabel>Start Date</FormLabel>
+              <FormControl>
+                <Input
+                  type="date"
+                  placeholder="Define start date"
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="endDate"
+          render={({ field }) => (
+            <FormItem className="w-full">
+              <FormLabel>End Date</FormLabel>
+              <FormControl>
+                <Input
+                  type="date"
+                  placeholder="Define end date"
                   {...field}
                 />
               </FormControl>
