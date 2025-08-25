@@ -67,20 +67,62 @@ export default function ActiveMachineList() {
 
   return (
    <div className="flex flex-wrap gap-6">
-         {machines?.map((machine) => (
+         {machines?.map((machine) => {
+
+          const statuses = ["running", "stopped", "idle"];
+          const randomStatus = statuses[Math.floor(Math.random() * statuses.length)];
+          const currentStates = ["alarm", "normal", "unplanned downtime", "planned downtime"];
+          const randomCurrentState = currentStates[Math.floor(Math.random() * currentStates.length)];
+
+          return (
            <div key={machine._id} className="w-1/5 min-w-[220px]">
              <MachineListElement
                name={machine.name}
                _id={machine._id}
                key={machine._id}
-               status="running" // Placeholder, replace with actual status if available
+               status={randomStatus}
+               currentState={randomCurrentState}
                liveKw={50} // Placeholder, replace with actual liveKw if available
              />
-           </div>
-         ))}
-         <div className="absolute bottom-2 right-2 p-4 bg-white dark:bg-zinc-800 w-full text-right">
-          Total power consumption: {machines?.reduce((acc, machine) => acc + machine.liveKw, 0) || 0} kW
-         </div>
+           </div>)
+          })}
+        <div className="absolute bottom-2 right-2 p-4 bg-white dark:bg-zinc-800 w-full text-right">
+          <div className="flex justify-end gap-4 mb-2">
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 rounded-full bg-green-300 dark:bg-green-900"></div>
+              <span className="text-sm">On</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 rounded-full bg-red-300 dark:bg-red-900"></div>
+              <span className="text-sm">Off</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 rounded-full bg-yellow-300 dark:bg-yellow-900"></div>
+              <span className="text-sm">Idle</span>
+            </div>
+          </div>
+          <div className="flex justify-end gap-4 mb-2">
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 rounded-sm bg-green-300 dark:bg-green-900"></div>
+              <span className="text-sm">Running</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 rounded-sm bg-red-300 dark:bg-red-900"></div>
+              <span className="text-sm">Alarm</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 rounded-sm bg-orange-300 dark:bg-orange-500"></div>
+              <span className="text-sm">Unplanned Downtime</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 rounded-sm bg-gray-300 dark:bg-gray-900"></div>
+              <span className="text-sm">Planned Downtime</span>
+            </div>
+          </div>
+          <span className="font-semibold">
+            Total power consumption: {machines?.reduce((acc, machine) => acc + 50, 0) || 0} kW
+          </span>
+        </div>
     </div>
   );
 }

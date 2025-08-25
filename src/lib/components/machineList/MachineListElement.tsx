@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Link } from "react-router-dom";
 import { Machine } from "./types";
 
-export default function MachineListElement({ name, _id, liveKw, status }: Machine) {
+export default function MachineListElement({ name, _id, liveKw, status, currentState }: Machine) {
 
   // const [expanded, setExpanded] = useState(false);
 
@@ -20,7 +20,6 @@ export default function MachineListElement({ name, _id, liveKw, status }: Machin
   // const goToSensors = () => {
   //   navigate(`/app/sensors?machineId=${_id}`);
   // }
-  status = "running";
   const statusColor =
     status === "running"
       ? "bg-green-500"
@@ -28,10 +27,26 @@ export default function MachineListElement({ name, _id, liveKw, status }: Machin
       ? "bg-red-500"
       : "bg-yellow-500";
 
+  let currentStateColor = "";
+
+  switch (currentState) {
+    case "alarm":
+      currentStateColor = "dark:bg-red-900 bg-red-300";
+      break;
+    case "unplanned downtime":
+      currentStateColor = "dark:bg-orange-900 bg-orange-300";
+      break;
+    case "planned downtime":
+      currentStateColor = "dark:bg-gray-900 bg-gray-300";
+      break;
+    default:
+      currentStateColor = "dark:bg-green-900 bg-green-300";
+  }
+
   return (
     <>
       <Link to={`/app/machine?machineId=${_id}`}>
-        <Card className="relative dark:bg-zinc-900 light:bg-zinc-300 border-zinc-400 w-full mb-4">
+        <Card className={`relative ${currentStateColor} border-zinc-400 w-full mb-4`}>
           <CardHeader className="flex flex-row justify-between items-center">
             <CardTitle className="text-xl">{name}</CardTitle>
             <Zap className="size-6 stroke-predic" />
@@ -41,7 +56,7 @@ export default function MachineListElement({ name, _id, liveKw, status }: Machin
               Live KW: {liveKw}
             </span>
             <span>
-              Efficiency: 55% {/* Placeholder for efficiency, replace with actual logic if needed */}
+              Efficiency: 55% {/* Placeholder for efficiency, replace with actual logic once that can be done*/}
             </span>
             <div
               className={`absolute bottom-2 right-2 w-4 h-4 rounded-full ${statusColor} shadow-md animate-pulse`}
