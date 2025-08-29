@@ -90,7 +90,7 @@ export default function MachineSensors(props: { machineId: string, halfHeight?: 
     }, [message]);
 
     return (
-        <div className={`flex flex-col items-center px-2 w-full ${props.halfHeight ? 'h-[50vh]' : 'h-screen'}`}>
+        <div className={`flex flex-col items-center px-2 w-full h-screen`}>
             <h1 className="text-2xl font-bold mb-4">Machine sensors</h1>
             {loading ? (
                 <p>Loading sensors...</p>

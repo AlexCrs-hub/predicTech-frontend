@@ -1,25 +1,10 @@
-import { useState } from "react";
-import { Button } from "../ui/button";
-import { ChevronDown, ChevronUp, Zap } from "lucide-react";
+import { Zap } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Link } from "react-router-dom";
 import { Machine } from "./types";
 
 export default function MachineListElement({ name, _id, liveKw, status, currentState }: Machine) {
 
-  // const [expanded, setExpanded] = useState(false);
-
-  // const handleDelete = async () => {
-  //   try {
-  //     onDelete(_id);
-  //   } catch (error) {
-  //     console.error("Error deleting machine:", error);
-  //   }
-  // };
-
-  // const goToSensors = () => {
-  //   navigate(`/app/sensors?machineId=${_id}`);
-  // }
   const statusColor =
     status === "running"
       ? "bg-green-500"

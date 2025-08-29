@@ -24,12 +24,6 @@ const FormSchema = z.object({
   machine_id: z
     .string()
     .min(1, { message: "Machine is required." }),
-  warning: z.string().min(2, {
-    message: "Invalid warning message.",
-  }).max(100),
-  messageText: z.string().min(6, {
-    message: "Reason of report must be at least 6 characters.",
-  }),
   startDate: z.string().min(1, { message: "Start date is required." }),
   endDate: z.string().min(1, { message: "End date is required." }),
 });
@@ -43,8 +37,6 @@ export default function MachineReportForm() {
     resolver: zodResolver(FormSchema),
     defaultValues: {
       machine_id: "",
-      warning: "",
-      messageText: "",
       startDate: new Date().toISOString().split("T")[0],
       endDate: new Date().toISOString().split("T")[0],
     },
@@ -60,7 +52,7 @@ export default function MachineReportForm() {
     //   description: "Your report has been sent successfully.",
     // });
     // console.log(data);
-    const { machine_id, warning, messageText, startDate, endDate } = data;
+    const { machine_id, startDate, endDate } = data;
     const response = await getMachineReport(machine_id, startDate, endDate);
   }
 
@@ -116,43 +108,6 @@ export default function MachineReportForm() {
                 </FormItem>
             )}
           />
-
-        <FormField
-          control={form.control}
-          name="warning"
-          render={({ field }) => (
-            <FormItem className="w-full">
-              <FormLabel>Error type</FormLabel>
-              <FormControl>
-                <Input
-                  type="text"
-                  placeholder="Define type of warning/error"
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="messageText"
-          render={({ field }) => (
-            <FormItem className="w-full">
-              <FormLabel>Message</FormLabel>
-              <FormControl>
-                <Input
-                  type="text"
-                  placeholder="Describe the error"
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
         <FormField
           control={form.control}
           name="startDate"
