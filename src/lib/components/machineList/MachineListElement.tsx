@@ -6,9 +6,9 @@ import { Machine } from "./types";
 export default function MachineListElement({ name, _id, liveKw, status, currentState }: Machine) {
 
   const statusColor =
-    status === "running"
+    status === "on"
       ? "bg-green-500"
-      : status === "stopped"
+      : status === "off"
       ? "bg-red-500"
       : "bg-yellow-500";
 

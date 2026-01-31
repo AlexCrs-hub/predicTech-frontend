@@ -4,15 +4,23 @@ import React, { createContext, useState, useRef, useEffect, useContext } from "r
 import { Client, IMessage } from '@stomp/stompjs';
 import SockJS from 'sockjs-client/dist/sockjs';
 
-interface WebSocketContextType {
-    message: string;
+interface MachineStatePayload {
+  machineId: string;
+  state: "ON" | "IDLE" | "OFF";
+  health: "HEALTHY" | "STALE" | "DISCONNECTED";
+  timestamp: number;
+}
 
+interface WebSocketContextType {
+  readings: string;
+  machineStates: Record<string, MachineStatePayload>;
 }
 
 const WebSocketContext = createContext<WebSocketContextType | undefined>(undefined);
 
 export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [messages, setMessages] = useState<string>("");
+    const [readings, setReadings] = useState<string>("");
+    const [machineStates, setMachineStates] = useState<Record<string, MachineStatePayload>>({});
     const clientRef = useRef<Client | null>(null);
 
     useEffect(() => {
@@ -21,9 +29,21 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         webSocketFactory: () => socket,
         debug: (str) => console.log(str),
         onConnect: () => {
+
             client.subscribe("/topic/mqtt-data", (message: IMessage) => {
                 console.log("Received message:", message.body);
-                setMessages(message.body || "");
+                setReadings(message.body || "");
+            });
+
+            client.subscribe("/topic/machine-state", (message: IMessage) => {
+                const payload: MachineStatePayload = JSON.parse(message.body);
+                    console.log("Received machine state:", payload);
+
+                    // Update the machineStates map
+                    setMachineStates(prev => ({
+                        ...prev,
+                        [payload.machineId]: payload
+                    }));
             });
         },
         });
@@ -36,8 +56,8 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }, []);
 
     return (
-        <WebSocketContext.Provider value={{ message: messages }}>
-        {children}
+        <WebSocketContext.Provider value={{ readings, machineStates }}>
+            {children}
         </WebSocketContext.Provider>
     );
 };

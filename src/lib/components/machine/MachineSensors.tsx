@@ -18,7 +18,7 @@ interface Sensor {
 export default function MachineSensors(props: { machineId: string, halfHeight?: boolean }) {
     const [sensors, setSensors] = useState<Sensor[]>([]);
     const [loading, setLoading] = useState(true);
-    const { message } = useWebSocket();
+    const { readings } = useWebSocket();
 
     useEffect(() => {
         const fetchSensors = async () => {
@@ -61,10 +61,10 @@ export default function MachineSensors(props: { machineId: string, halfHeight?: 
 
     useEffect(() => {
         // Handle incoming messages from WebSocket
-       if (!message) return;
+       if (!readings) return;
 
        try{
-        const parsed = JSON.parse(message);
+        const parsed = JSON.parse(readings);
         const measuredAt = new Date(parsed.measuredAt);
         const {measuredAt: _, ...sensorData} = parsed; // Exclude measuredAt from sensor data
 
@@ -87,7 +87,7 @@ export default function MachineSensors(props: { machineId: string, halfHeight?: 
         } catch (error) {
             console.error("Error parsing WebSocket message:", error);
         }
-    }, [message]);
+    }, [readings]);
 
     return (
         <div className={`flex flex-col items-center px-2 w-full h-screen`}>

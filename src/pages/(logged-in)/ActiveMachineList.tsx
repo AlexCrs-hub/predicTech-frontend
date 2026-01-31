@@ -4,6 +4,7 @@ import { useToast } from "@/lib/hooks/use-toast";
 import { fetchAllMachines } from "@/lib/api/machineApi";
 import MachineListElement from "@/lib/components/machineList/MachineListElement";
 import { Machine } from "@/lib/components/machineList/types";
+import { useWebSocket } from "@/context/WebSocketContext";
 
 export default function ActiveMachineList() {
   const [lines, setLines] = useState<string[]>([]);
@@ -15,39 +16,45 @@ export default function ActiveMachineList() {
   const { toast } = useToast();
   const [message, setMessage] = useState("");
   const [titleMessage, setTitleMessage] = useState("");
+  const { machineStates } = useWebSocket();
 
-  const handleLineChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    setSelectedLine(event.target.value);
-  };
+  // const handleLineChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+  //   setSelectedLine(event.target.value);
+  // };
 
-  const handleNewLineNameChange = (
-    event: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    setNewLineName(event.target.value);
-  };
+  // const handleNewLineNameChange = (
+  //   event: React.ChangeEvent<HTMLInputElement>
+  // ) => {
+  //   setNewLineName(event.target.value);
+  // };
 
-  const handleAddLine = () => {
-    if (newLineName && !lines.includes(newLineName)) {
-      setLines([...lines, newLineName]);
-      setSelectedLine(newLineName);
-      setTitleMessage("New line added successfully!");
-      setNewLineName("");
-    }
-  };
+  // const handleAddLine = () => {
+  //   if (newLineName && !lines.includes(newLineName)) {
+  //     setLines([...lines, newLineName]);
+  //     setSelectedLine(newLineName);
+  //     setTitleMessage("New line added successfully!");
+  //     setNewLineName("");
+  //   }
+  // };
 
   const { getUser } = useAuth();
+
   const userData = getUser();
+
   useEffect(() => {
     const fetchMachines = async () => {
+
       setLoading(true);
       setError(null);
 
       try {
         const response = await fetchAllMachines();
         const data = response;
+
         setMachines(data.machines);
-        setTitleMessage("Successfully added new line!");
+        setTitleMessage("Successfully fetched machines!");
         setMessage("");
+        
       } catch (err) {
         setError((err as Error).message);
       } finally {
@@ -62,10 +69,25 @@ export default function ActiveMachineList() {
    <div className="flex flex-wrap gap-6">
          {machines?.map((machine) => {
 
-          const statuses = ["running", "stopped", "idle"];
-          const randomStatus = statuses[Math.floor(Math.random() * statuses.length)];
-          const currentStates = ["alarm", "normal", "unplanned downtime", "planned downtime"];
-          const randomCurrentState = currentStates[Math.floor(Math.random() * currentStates.length)];
+          const wsState = machineStates[machine._id];
+
+          let status: "on" | "off" | "idle" = "off"; // default
+
+          if (wsState?.state) {
+              const s = wsState.state.toLowerCase();
+              if (s === "on" || s === "off" || s === "idle") {
+                  status = s;
+              }
+          }
+          
+          const currentState =
+            wsState?.health.toLowerCase() === "healthy"
+              ? "normal"
+              : wsState?.health.toLowerCase() === "stale"
+              ? "unplanned downtime"
+              : wsState?.health.toLowerCase() === "disconnected"
+              ? "planned downtime"
+              : "alarm"; // fallback
 
           return (
            <div key={machine._id} className="w-1/5 min-w-[220px]">
@@ -73,8 +95,8 @@ export default function ActiveMachineList() {
                name={machine.name}
                _id={machine._id}
                key={machine._id}
-               status={randomStatus}
-               currentState={randomCurrentState}
+               status={status}
+               currentState={currentState}
                liveKw={50} // Placeholder, replace with actual liveKw if available
              />
            </div>)

@@ -22,7 +22,7 @@ export default function SensorGraphsPage() {
     const { search } = useLocation();
     const queryParams = new URLSearchParams(search);
     const machineId = queryParams.get("machineId") || "";
-    const { message } = useWebSocket();
+    const { readings } = useWebSocket();
 
     useEffect(() => {
         const fetchSensors = async () => {
@@ -65,10 +65,10 @@ export default function SensorGraphsPage() {
 
     useEffect(() => {
         // Handle incoming messages from WebSocket
-       if (!message) return;
+       if (!readings) return;
 
        try{
-        const parsed = JSON.parse(message);
+        const parsed = JSON.parse(readings);
         const measuredAt = new Date(parsed.measuredAt);
         const {measuredAt: _, ...sensorData} = parsed; // Exclude measuredAt from sensor data
 
@@ -91,7 +91,7 @@ export default function SensorGraphsPage() {
         } catch (error) {
             console.error("Error parsing WebSocket message:", error);
         }
-    }, [message]);
+    }, [readings]);
 
     return (
         <div className="flex flex-col items-center min-h-screen pt-16 px-2 w-full">

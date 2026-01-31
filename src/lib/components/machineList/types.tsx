@@ -3,5 +3,5 @@ export type Machine = {
   _id: string;
   liveKw: number;
   currentState: "alarm" | "normal" | "unplanned downtime" | "planned downtime";
-  status: "running" | "stopped" | "idle";
+  status: "on" | "off" | "idle";
 };

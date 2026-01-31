@@ -52,7 +52,7 @@ export default function MachineListPage() {
             name={machine.name}
             _id={machine._id}
             key={machine._id}
-            status="running" // Placeholder, replace with actual status if available
+            status="on" // Placeholder, replace with actual status if available
             liveKw={0} // Placeholder, replace with actual liveKw if available
           />
         </div>
