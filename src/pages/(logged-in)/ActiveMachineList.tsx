@@ -1,12 +1,6 @@
 import { useState, useEffect } from "react";
-import AddMachineCard from "@/lib/components/machineList/AddMachineCard";
-import MachineCard from "@/lib/components/machineList/MachineCard";
-import StatsCard from "@/lib/components/machineList/StatsCard";
 import { useAuth } from "@/context/AuthContext";
-import { ToastAction } from "@/lib/components/ui/toast";
 import { useToast } from "@/lib/hooks/use-toast";
-import { Toaster } from "@/lib/components/ui/toaster";
-import { addLine } from "@/lib/api/lineApi";
 import { fetchAllMachines } from "@/lib/api/machineApi";
 import MachineListElement from "@/lib/components/machineList/MachineListElement";
 import { Machine } from "@/lib/components/machineList/types";
@@ -38,7 +32,6 @@ export default function ActiveMachineList() {
       setSelectedLine(newLineName);
       setTitleMessage("New line added successfully!");
       setNewLineName("");
-      // Clear the input after adding
     }
   };
 

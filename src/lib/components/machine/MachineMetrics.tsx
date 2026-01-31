@@ -5,8 +5,8 @@ import PieChartMetric from "./PieChartMetric";
 export default function MachineMetrics() {
 
     const performanceData = [
-        { name: "Good", value: 80 },
-        { name: "Bad", value: 20 },
+        { name: "Optimal", value: 80 },
+        { name: "Underperforming", value: 20 },
     ];
     const availabilityData = [
         { name: "Uptime", value: 90 },

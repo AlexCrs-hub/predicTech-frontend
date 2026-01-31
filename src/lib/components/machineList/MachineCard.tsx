@@ -18,11 +18,11 @@ export default function MachineCard({ machinesData }: MachineProps) {
     <>
       {console.log(machinesData)}
       {machinesData.map((machine) => (
-        <Link to={`/machines/${Number(machine.machine_id)}`}>
+        <Link to={`/machines/${Number(machine._id)}`}>
           <Card
             className={cn(
               "dark:bg-zinc-900 h-56 border-zinc-400",
-              machine.state
+              machine.current
                 ? "opacity-100"
                 : "dark:bg-opacity-30 dark:text-opacity-40 text-opacity-40 border-opacity-40"
             )}

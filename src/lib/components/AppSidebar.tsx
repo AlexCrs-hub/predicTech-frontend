@@ -12,24 +12,24 @@ import { ScrollArea } from "@radix-ui/react-scroll-area";
 
 const items = [
   {
-    id: 3,
+    id: 1,
     isWarning: true,
     message:
-      "some kind of a warning, some kind of a warning, some kind of a warning.",
-    url: `/machines/3`,
+      "Cutter Machine is drawing elevated current (avg 96.8 A). Possible blade dullness or material jam.",
+    url: `/machines/1`,
   },
   {
-    id: 5,
+    id: 2,
     isWarning: false,
     message:
-      "some kind of an error, some kind of an error, some kind of an error.",
-    url: "/machines/5",
+      "Current consumption exceeded the threshold value.",
+    url: "/machines/2",
   },
   {
     id: 9,
     isWarning: true,
     message:
-      "some kind of a warning, some kind of a warning, some kind of a warning.",
+      "Cutter Machine temperature rising rapidly. Cooling efficiency may be reduced.",
     url: "/machines/9",
   },
 ];
