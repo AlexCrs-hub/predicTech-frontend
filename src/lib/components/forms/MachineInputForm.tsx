@@ -18,66 +18,61 @@ import { Toaster } from "../ui/toaster";
 import { useEffect, useState } from "react";
 import { fetchUserLines } from "@/lib/api/lineApi";
 import { addMachine } from "@/lib/api/machineApi";
+import { useAuth } from "@/context/AuthContext";
 
 
 const FormSchema = z.object({
-  line_id: z.string().min(1, { message: "Production line is required." }),
   machine_name: z
     .string()
     .min(2, { message: "Machine name must be at least 2 characters." }),
+  max_power: z
+    .coerce.number()
+    .min(1, { message: "Max power consumption must be at least 1 KW." }),
 });
 
 export default function MachineInputForm() {
-  const [lines, setLines] = useState<{ _id: string; name: string }[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [machineName, setMachineName] = useState(""); // stan dla machine_name
 
-  useEffect(() => {
-    const fetchLines = async () => {
-      try {
-        const response = await fetchUserLines();
-
-        setLines(response.data);
-      } catch (error) {
-        console.error("Error fetching lines:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchLines();
-  }, []);
+  const [loading, setLoading] = useState(false);
+  const [machineName, setMachineName] = useState(""); // stan dla machine_name;
+  const [maxPowerConsumption, setMaxPowerConsumption] = useState(0);
+  const userId = useAuth().getUser()?.user._id || "";
 
   const form = useForm<z.infer<typeof FormSchema>>({
     resolver: zodResolver(FormSchema),
     defaultValues: {
-      line_id: "",
       machine_name: "",
+      max_power: 0,
     },
   });
 
   async function onSubmit(data: z.infer<typeof FormSchema>) {
     console.log(
       "Final payload:",
-      JSON.stringify({ machine_name: data.machine_name })
+      JSON.stringify({ machine_name: data.machine_name, max_power: data.max_power })
     );
 
     try {
+      setLoading(true);
       const response = await addMachine(
-        data.line_id,
-        data.machine_name
+        data.machine_name,
+        data.max_power,
+        userId
       );
 
       console.log(
         "Sending request to:",
-        `https://localhost:8081/api/machines/line/${data.line_id}`
+        `https://localhost:8081/api/machines`
       );
       console.log(
         "Request body:",
-        JSON.stringify({ machine_name: machineName })
+        JSON.stringify({ machine_name: data.machine_name, max_power: data.max_power })
       );
 
       if (!response.message)
+      {
+        setLoading(false);  
         throw new Error(response.error || "Failed to add machine.");
+      }
 
       toast({
         title: "Success",
@@ -86,12 +81,15 @@ export default function MachineInputForm() {
 
       form.reset();
     } catch (error) {
+      setLoading(false);  
       console.error("Fetch error: ", error);
       toast({
         title: "Error",
         description: "Something went wrong.",
         variant: "destructive",
       });
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -101,35 +99,6 @@ export default function MachineInputForm() {
         onSubmit={form.handleSubmit(onSubmit)}
         className="w-2/3 space-y-6 flex flex-col items-center"
       >
-        <FormField
-          control={form.control}
-          name="line_id"
-          render={({ field }) => (
-            <FormItem className="w-full">
-              <FormLabel>Production Line</FormLabel>
-              <FormControl>
-                <select
-                  {...field}
-                  className="border rounded-lg p-2 w-full bg-white"
-                  onChange={(e) => field.onChange(e.target.value)}
-                  value={field.value}
-                >
-                  <option value="" disabled>
-                    {loading ? "Loading..." : "Select a line"}
-                  </option>
-                  {!loading &&
-                    lines.map((line) => (
-                      <option key={line._id} value={line._id}>
-                        {line.name}
-                      </option>
-                    ))}
-                </select>
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
         <FormField
           control={form.control}
           name="machine_name"
@@ -144,6 +113,28 @@ export default function MachineInputForm() {
                   onChange={(e) => {
                     setMachineName(e.target.value); // aktualizacja wartości w stanie
                     field.onChange(e.target.value); // synchronizacja z react-hook-form
+                  }}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="max_power"
+          render={({ field }) => (
+            <FormItem className="w-full">
+              <FormLabel>Max Power Consumption (KW)</FormLabel>
+              <FormControl>
+                <Input
+                  placeholder="Enter max power consumption"
+                  {...field}
+                  value={maxPowerConsumption}
+                  onChange={(e) => {
+                    setMaxPowerConsumption(Number(e.target.value));
+                    field.onChange(e.target.value);
                   }}
                 />
               </FormControl>

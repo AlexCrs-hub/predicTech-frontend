@@ -14,12 +14,12 @@ export async function fetchMachinesByLine(lineId: string) {
   return response.json();
 }
 
-export async function addMachine(lineId: string, machineName: string) {
-  const response = await fetch(`${API_URLS.BACKEND_URL}/machines/line/${lineId}`, {
+export async function addMachine(machineName: string, maxPower: number, userId: string) {
+  const response = await fetch(`${API_URLS.BACKEND_URL}/machines`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: machineName }),
+    body: JSON.stringify({ name: machineName, max_power: maxPower, user_id: userId }),
   });
   return response.json();
 }

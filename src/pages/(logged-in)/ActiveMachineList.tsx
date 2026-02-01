@@ -86,8 +86,8 @@ export default function ActiveMachineList() {
               : wsState?.health.toLowerCase() === "stale"
               ? "unplanned downtime"
               : wsState?.health.toLowerCase() === "disconnected"
-              ? "planned downtime"
-              : "alarm"; // fallback
+              ? "alarm"
+              : "planned downtime"; // fallback
 
           return (
            <div key={machine._id} className="w-1/5 min-w-[220px]">

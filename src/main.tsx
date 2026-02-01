@@ -28,13 +28,13 @@ const router = createBrowserRouter([
     element: <PrivateRoute />,
     children: [
       { path: "/app", element: <Dashboard /> },
-      { path: "/app/machine-list", element: <MachineListPage /> },
+      // { path: "/app/machine-list", element: <MachineListPage /> },   // Unused for now
       { path: "/app/active-machines", element: <ActiveMachineList /> },
       { path: "/app/add-machine", element: <AddMachinePage /> },
-      { path: "/app/add-sensor", element: <AddSensorPage /> },
+      // { path: "/app/add-sensor", element: <AddSensorPage /> },  // Unused for now
       { path: "/app/report", element: <AddReportPage /> },
       { path: "/app/machine", element: <MachinePage /> },
-      { path: "/app/production-lines", element: <ProductionLinesPage /> }
+      // { path: "/app/production-lines", element: <ProductionLinesPage /> }  // Unused for now
     ],
   },
 ]);
