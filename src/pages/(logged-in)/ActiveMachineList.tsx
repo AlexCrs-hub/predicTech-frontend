@@ -16,7 +16,7 @@ export default function ActiveMachineList() {
   const { toast } = useToast();
   const [message, setMessage] = useState("");
   const [titleMessage, setTitleMessage] = useState("");
-  const { machineStates } = useWebSocket();
+  const { readings, machineStates } = useWebSocket();
 
   // const handleLineChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
   //   setSelectedLine(event.target.value);
