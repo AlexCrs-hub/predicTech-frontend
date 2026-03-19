@@ -1,23 +1,27 @@
 import { Machine } from "../machineList/types";
 import MachineMetrics from "./MachineMetrics";
 
-export default function MachineDetails(props: { machine: Machine | null }) {
-  const { machine } = props;
+type MachineDetailsProps = {
+  machine: Machine | null;
+  status: Machine["status"];
+  currentState: Machine["currentState"];
+};
+
+export default function MachineDetails(props: MachineDetailsProps) {
+  const { machine, status, currentState } = props;
   if (!machine) {
     return <div>Loading...</div>;
   }
 
-  const machineStatus = "Idle";
   const statusColor =
-    machine.status === "running"
+    status === "on"
       ? "bg-green-500"
-      : machine.status === "stopped"
+      : status === "off"
       ? "bg-red-500"
       : "bg-yellow-500";
 
   let stateColor = "";
-  const machineState = "Running"
-  switch (machine.currentState) {
+  switch (currentState) {
     case "alarm":
       stateColor = "bg-red-300 dark:bg-red-900";
       break;
@@ -33,17 +37,17 @@ export default function MachineDetails(props: { machine: Machine | null }) {
   return (
     <div className="w-full flex flex-col">
       <h1 className="text-2xl font-bold mb-4">{machine.name}</h1>
-      <p className="mb-2">ID: {machine._id}</p>
       <div className="flex gap-4 mb-4">
         <div className={`px-3 py-1 rounded text-white text-sm font-semibold ${statusColor}`}>
-          {machineStatus}
+          {status.toUpperCase()}
         </div>
         <div className={`px-3 py-1 rounded text-white text-sm font-semibold ${stateColor}`}>
-          {machineState}
+          {currentState}
         </div>
       </div>
-      <p className="mb-2">Live kW: 50</p>
-      <p className="mb-2">Efficiency: 55%</p>
+      <p className="mb-2">Live kW: N/A</p>
+      <p className="mb-2">Max kW: {machine.maxPowerConsumption ?? "N/A"}</p>
+      {/* <p className="mb-2">Efficiency: 55%</p> */}
       <MachineMetrics />
     </div>
   );

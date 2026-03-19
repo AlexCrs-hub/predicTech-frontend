@@ -41,7 +41,7 @@ export default function MachineListElement({ name, _id, liveKw, status, currentS
               Live KW: {liveKw}
             </span>
             <span>
-              Efficiency: 55% {/* Placeholder for efficiency, replace with actual logic once that can be done*/}
+              Efficiency: N/A {/* Placeholder for efficiency, replace with actual logic once that can be done*/}
             </span>
             <div
               className={`absolute bottom-2 right-2 w-4 h-4 rounded-full ${statusColor} shadow-md animate-pulse`}

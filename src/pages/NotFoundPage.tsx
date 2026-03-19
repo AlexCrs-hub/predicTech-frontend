@@ -8,10 +8,10 @@ export default function NotFound() {
         <p className="font-medium">Page Not Found</p>
       </h3>
       <Link
-        to="/"
+        to="/app"
         className="w-64 bg-zinc-800 text-white text-center p-1.5 rounded-md hover:bg-zinc-700 duration-100 font-medium"
       >
-        Redirect
+        Redirect to main page
       </Link>
     </div>
   );

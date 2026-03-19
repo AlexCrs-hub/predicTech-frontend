@@ -5,7 +5,12 @@ import {
   CardHeader,
   CardTitle,
 } from "../ui/card";
-import type { StatsCardProps } from "@/pages/(logged-in)/Dashboard";
+
+export interface StatsCardProps {
+  title: string;
+  description: string;
+  value: string;
+}
 
 export default function StatsCard({
   title,

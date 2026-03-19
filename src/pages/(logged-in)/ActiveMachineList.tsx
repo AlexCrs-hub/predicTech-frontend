@@ -18,25 +18,6 @@ export default function ActiveMachineList() {
   const [titleMessage, setTitleMessage] = useState("");
   const { readings, machineStates } = useWebSocket();
 
-  // const handleLineChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-  //   setSelectedLine(event.target.value);
-  // };
-
-  // const handleNewLineNameChange = (
-  //   event: React.ChangeEvent<HTMLInputElement>
-  // ) => {
-  //   setNewLineName(event.target.value);
-  // };
-
-  // const handleAddLine = () => {
-  //   if (newLineName && !lines.includes(newLineName)) {
-  //     setLines([...lines, newLineName]);
-  //     setSelectedLine(newLineName);
-  //     setTitleMessage("New line added successfully!");
-  //     setNewLineName("");
-  //   }
-  // };
-
   const { getUser } = useAuth();
 
   const userData = getUser();
@@ -97,7 +78,7 @@ export default function ActiveMachineList() {
                key={machine._id}
                status={status}
                currentState={currentState}
-               liveKw={50} // Placeholder, replace with actual liveKw if available
+               liveKw={0}
              />
            </div>)
           })}
@@ -135,7 +116,7 @@ export default function ActiveMachineList() {
             </div>
           </div>
           <span className="font-semibold">
-            Total power consumption: {machines?.reduce((acc, machine) => acc + 50, 0) || 0} kW
+            Total power consumption: {machines?.reduce((acc, machine) => acc, 0) || 0} kW
           </span>
         </div>
     </div>

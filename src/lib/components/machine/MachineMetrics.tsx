@@ -1,21 +1,7 @@
 
 import BarConsumptionChart from "./BarConsumptionChart";
-import PieChartMetric from "./PieChartMetric";
 
 export default function MachineMetrics() {
-
-    const performanceData = [
-        { name: "Optimal", value: 80 },
-        { name: "Underperforming", value: 20 },
-    ];
-    const availabilityData = [
-        { name: "Uptime", value: 90 },
-        { name: "Downtime", value: 10 },
-    ];
-    const oeeData = [
-        { name: "OEE", value: 75 },
-        { name: "Loss", value: 25 },
-    ];
 
     const kwData = [
         { name: "Mon", kw: 120 },
@@ -29,11 +15,6 @@ export default function MachineMetrics() {
 
     return (
         <div>
-            <div className="w-full grid grid-cols-3 gap-2">
-                <PieChartMetric title="Performance" data={performanceData} />
-                <PieChartMetric title="Availability" data={availabilityData} />
-                <PieChartMetric title="OEE" data={oeeData} />
-            </div>
             <BarConsumptionChart title="kW Consumption per day" data={kwData} />
         </div>
     );

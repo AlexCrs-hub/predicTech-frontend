@@ -31,13 +31,11 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         onConnect: () => {
 
             client.subscribe("/topic/mqtt-data", (message: IMessage) => {
-                console.log("Received message:", message.body);
                 setReadings(message.body || "");
             });
 
             client.subscribe("/topic/machine-state", (message: IMessage) => {
                 const payload: MachineStatePayload = JSON.parse(message.body);
-                    console.log("Received machine state:", payload);
 
                     // Update the machineStates map
                     setMachineStates(prev => ({
