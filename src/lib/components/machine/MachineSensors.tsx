@@ -1,5 +1,5 @@
 import { useWebSocket } from "@/context/WebSocketContext";
-import { fetchReadingsForSensor } from "@/lib/api/readingApi";
+import { fetchAllReadingsForSensor, fetchReadingsForSensor } from "@/lib/api/readingApi";
 import { fetchSensorsByMachine } from "@/lib/api/sensorApi";
 import { useState, useEffect } from "react";
 import { ResponsiveContainer, CartesianGrid, XAxis, YAxis, Tooltip, Line, LineChart } from "recharts";
@@ -24,9 +24,7 @@ export default function MachineSensors(props: { machineId: string, halfHeight?: 
         const fetchSensors = async () => {
             setLoading(true);
             try {
-                console.log(props.machineId);
                 const response = await fetchSensorsByMachine(props.machineId);
-                console.log(response);
                 setSensors(Array.isArray(response) ? response : []);
             } catch (error) {
                 console.error("Error fetching sensors:", error);
@@ -51,6 +49,7 @@ export default function MachineSensors(props: { machineId: string, halfHeight?: 
                         return { ...sensor, readings };
                     })
                 );
+                console.log("Sensors with readings:", sensorsWithReadings);
                 setSensors(sensorsWithReadings);
             } catch (error) {
                 console.error("Error fetching readings:", error);

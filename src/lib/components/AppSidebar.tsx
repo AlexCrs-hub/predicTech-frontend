@@ -5,7 +5,6 @@ import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarMenu,
-  SidebarMenuButton,
   SidebarMenuItem,
 } from "@/lib/components/ui/sidebar";
 import { ScrollArea } from "@radix-ui/react-scroll-area";
@@ -22,6 +21,7 @@ type SidebarMachine = {
 };
 
 type SensorWarning = {
+  id: string;
   machineId: string;
   machineName: string;
   sensorName: string;
@@ -47,7 +47,7 @@ export function AppSidebar() {
           ? response
           : [];
         setMachines(data);
-      } catch (e) {
+      } catch {
         setMachines([]);
       }
     };
@@ -65,29 +65,39 @@ export function AppSidebar() {
 
       const newWarnings: SensorWarning[] = [];
 
-      incomingReadings.forEach((item: any) => {
-        const machine = machines.find((m) => m._id === String(item.machineId));
+      incomingReadings.forEach((item: unknown) => {
+        if (item === null || typeof item !== "object") return;
+        const entry = item as Record<string, unknown>;
+
+        const machineIdRaw = entry.machineId;
+        const sensorNameRaw = entry.sensorName;
+        const valueRaw = entry.value;
+
+        const machine = machines.find((m) => m._id === String(machineIdRaw));
         if (!machine) return;
 
-        const value = Number(item.value);
+        const value = Number(valueRaw);
         if (Number.isNaN(value)) return;
+
+        const sensorName = String(sensorNameRaw);
 
         const maxPower = Number(machine.maxPowerConsumption ?? machine.max_power ?? 0);
         if (maxPower > 0 && value > maxPower) {
           newWarnings.push({
-            machineId: String(item.machineId),
-            machineName: machine.name || `Machine ${item.machineId}`,
-            sensorName: String(item.sensorName),
+            id: `${machineIdRaw}-${sensorName}-${Date.now()}-${Math.random()}`,
+            machineId: String(machineIdRaw),
+            machineName: machine.name || `Machine ${machineIdRaw}`,
+            sensorName,
             value,
             maxPower,
-            url: `/app/machine?machineId=${item.machineId}`,
+            url: `/app/machine?machineId=${machineIdRaw}`,
             type: 'warning',
           });
         }
       });
 
       setWarnings(prev => [...prev, ...newWarnings]);
-    } catch (_) {
+    } catch {
       // ignore
     }
   }, [readings, machines]);
@@ -101,6 +111,7 @@ export function AppSidebar() {
 
       if (state.health === "DISCONNECTED") {
         newErrors.push({
+          id: `${machineId}-connection-${Date.now()}-${Math.random()}`,
           machineId,
           machineName: machine.name || `Machine ${machineId}`,
           sensorName: "Connection",
@@ -123,6 +134,11 @@ export function AppSidebar() {
 
   const allNotifications = [...warnings, ...errors];
 
+  const dismissNotification = (id: string) => {
+    setWarnings((prev) => prev.filter((item) => item.id !== id));
+    setErrors((prev) => prev.filter((item) => item.id !== id));
+  };
+
   return (
     <Sidebar className="z-30 mr-0 top-16 dark:border-predic/40">
       <SidebarContent>
@@ -133,10 +149,10 @@ export function AppSidebar() {
                 {allNotifications.length === 0 ? (
                   <div className="p-4 text-sm text-gray-500">No notifications</div>
                 ) : (
-                  allNotifications.map((item, index) => (
-                    <SidebarMenuItem key={`${item.machineId}-${item.sensorName}-${index}`}>
-                      <SidebarMenuButton className="flex h-full">
-                        <Link to={item.url} className="flex h-full w-full">
+                  allNotifications.map((item) => (
+                    <SidebarMenuItem key={item.id}>
+                      <div className="flex items-start gap-2 p-2">
+                        <Link to={item.url} className="flex-1">
                           <ErrorCard
                             machineName={item.machineName}
                             isWarning={item.type === 'warning'}
@@ -147,7 +163,19 @@ export function AppSidebar() {
                             }
                           />
                         </Link>
-                      </SidebarMenuButton>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            dismissNotification(item.id);
+                          }}
+                          className="rounded-full p-1 text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white"
+                          aria-label={`Dismiss ${item.type} for ${item.machineName}`}>
+                          ×
+                        </button>
+                      </div>
                     </SidebarMenuItem>
                   ))
                 )}
