@@ -54,7 +54,7 @@ export default function MachineListPage() {
             key={machine._id}
             status="on" // Placeholder, replace with actual status if available
             liveKw={0} // Placeholder, replace with actual liveKw if available
-          />
+            currentState={"alarm"}          />
         </div>
       ))}
     </div>

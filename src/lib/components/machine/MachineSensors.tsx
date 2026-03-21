@@ -1,19 +1,9 @@
 import { useWebSocket } from "@/context/WebSocketContext";
-import { fetchAllReadingsForSensor, fetchReadingsForSensor } from "@/lib/api/readingApi";
+import { fetchReadingsForSensor } from "@/lib/api/readingApi";
 import { fetchSensorsByMachine } from "@/lib/api/sensorApi";
+import { Sensor } from "@/lib/types/Sensor";
 import { useState, useEffect } from "react";
 import { ResponsiveContainer, CartesianGrid, XAxis, YAxis, Tooltip, Line, LineChart } from "recharts";
-
-interface Reading {
-    measurement: number;
-    measuredAt: Date;
-}
-
-interface Sensor {
-    _id: string;
-    name: string;
-    readings: Reading[];
-}
 
 export default function MachineSensors(props: { machineId: string, halfHeight?: boolean }) {
     const [sensors, setSensors] = useState<Sensor[]>([]);
