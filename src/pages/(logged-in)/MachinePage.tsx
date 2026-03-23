@@ -10,7 +10,7 @@ import { useLocation } from "react-router-dom";
 export default function MachinePage() {
   const [machine, setMachine] = useState(null);
   const [error, setError] = useState("");
-  const { machineStates } = useWebSocket();
+  const { machineStates, liveKw } = useWebSocket();
   const { search } = useLocation();
   const queryParams = new URLSearchParams(search);
   const machineId = queryParams.get("machineId") || "";
@@ -54,6 +54,7 @@ export default function MachinePage() {
         machine={machine}
         status={status}
         currentState={currentState}
+        liveKw={liveKw[machineId] || 0}
       />
       <MachineSensors machineId={machineId} halfHeight={halfHeight}/>
     </div>

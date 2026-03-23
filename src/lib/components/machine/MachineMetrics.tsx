@@ -16,6 +16,7 @@ export default function MachineMetrics({ id }: MachineMetricsProps) {
 
     useEffect(() => {
         const fetchSensors = async () => {
+            if(!id) return;
             setLoading(true);
             try {
                 const response = await fetchSensorsByMachine(id);
@@ -35,38 +36,46 @@ export default function MachineMetrics({ id }: MachineMetricsProps) {
         //get daily consumption for sensors with unit kW
         const fetchDailyConsumption = async () => {
             setLoading(true);
-            const kWSensors = sensors.filter(sensor => sensor.unit === 'kW');
-        
-            const results = await Promise.all(
-                kWSensors.map(sensor => fetchDailyConsumptionForSensor(sensor._id))
-            );
-
-            // results[i] corresponds to kWSensors[i]
-            const consumptionBySensor = kWSensors.reduce((acc, sensor, index) => {
-                acc[sensor._id] = results[index];
-                return acc;
-            }, {} as Record<string, typeof results[0]>);
+            try{
+                const kWSensors = sensors.filter(sensor => sensor.unit === 'kW');
             
-            setDailyConsumption(consumptionBySensor);
-            setLoading(false);
+                const results = await Promise.all(
+                    kWSensors.map(sensor => fetchDailyConsumptionForSensor(sensor._id))
+                );
+                console.log("Daily consumption results:", results);
+                // results[i] corresponds to kWSensors[i]
+                const consumptionBySensor = kWSensors.reduce((acc, sensor, index) => {
+                    acc[sensor.name] = results[index];
+                    return acc;
+                }, {} as Record<string, typeof results[0]>);
+                
+                setDailyConsumption(consumptionBySensor);
+            } catch (error) {
+                console.error("Error fetching daily consumption:", error);
+                setDailyConsumption({});
+            } finally {
+                setLoading(false);
+            }
         };
 
         fetchDailyConsumption();
-    }, [loading, sensors]);
-    
-    const kwData = [
-        { name: "Mon", kw: 120 },
-        { name: "Tue", kw: 150 },
-        { name: "Wed", kw: 100 },
-        { name: "Thu", kw: 170 },
-        { name: "Fri", kw: 130 },
-        { name: "Sat", kw: 90 },
-        { name: "Sun", kw: 80 },
-    ];
+    }, [sensors]);
 
     return (
         <div>
-            <BarConsumptionChart title="kW Consumption per day" data={kwData} />
+            {
+                loading ? (
+                    <p>Loading metrics...</p>
+                ) : (
+                    Object.keys(dailyConsumption).length > 0 ? (
+                        Object.entries(dailyConsumption).map(([sensorName, data]) => (
+                            <BarConsumptionChart title= {`kW Consumption of ${sensorName} for the last 7 days`} data={data} />
+                        ))
+                    ) : (
+                        <p> No kW sensors found for this machine.</p>
+                    )
+                )
+            }
         </div>
     );
 }

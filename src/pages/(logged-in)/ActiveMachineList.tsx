@@ -7,20 +7,13 @@ import { Machine } from "@/lib/components/machineList/types";
 import { useWebSocket } from "@/context/WebSocketContext";
 
 export default function ActiveMachineList() {
-  const [lines, setLines] = useState<string[]>([]);
-  const [selectedLine, setSelectedLine] = useState<string>("");
-  const [newLineName, setNewLineName] = useState<string>("");
   const [machines, setMachines] = useState<Machine[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
   const [message, setMessage] = useState("");
   const [titleMessage, setTitleMessage] = useState("");
-  const { readings, machineStates } = useWebSocket();
-
-  const { getUser } = useAuth();
-
-  const userData = getUser();
+  const { machineStates, liveKw } = useWebSocket();
 
   useEffect(() => {
     const fetchMachines = async () => {
@@ -44,7 +37,7 @@ export default function ActiveMachineList() {
     };
 
     fetchMachines();
-  }, [selectedLine]);
+  }, []);
 
   return (
    <div className="flex flex-wrap gap-6">
@@ -78,7 +71,7 @@ export default function ActiveMachineList() {
                key={machine._id}
                status={status}
                currentState={currentState}
-               liveKw={0}
+               liveKw={liveKw[machine._id] || 0}
              />
            </div>)
           })}

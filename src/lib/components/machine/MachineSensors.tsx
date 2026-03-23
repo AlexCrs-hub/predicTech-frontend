@@ -52,42 +52,42 @@ export default function MachineSensors(props: { machineId: string, halfHeight?: 
     }, [sensors.length]); // Only run when number of sensors changes
 
     useEffect(() => {
-  if (!readings) return;
+        if (!readings) return;
 
-  try {
-    const parsed = JSON.parse(readings);
-    const measuredAt = new Date(parsed.measuredAt);
-    const incomingReadings = parsed.readings;
+        try {
+            const parsed = JSON.parse(readings);
+            const measuredAt = new Date(parsed.measuredAt);
+            const incomingReadings = parsed.readings;
 
-    if (!Array.isArray(incomingReadings)) return;
+            if (!Array.isArray(incomingReadings)) return;
 
-    setSensors(prevSensors =>
-      prevSensors.map(sensor => {
-        // find matching reading for this sensor
-        const match = incomingReadings.find(
-          (r: any) =>
-            r.machineId === props.machineId &&
-            r.sensorName === sensor.name
-        );
+            setSensors(prevSensors =>
+            prevSensors.map(sensor => {
+                // find matching reading for this sensor
+                const match = incomingReadings.find(
+                (r: any) =>
+                    r.machineId === props.machineId &&
+                    r.sensorName === sensor.name
+                );
 
-        if (!match) return sensor;
+                if (!match) return sensor;
 
-        return {
-          ...sensor,
-          readings: [
-            ...(sensor.readings || []),
-            {
-              measurement: match.value,
-              measuredAt,
-            },
-          ],
-        };
-      })
-    );
-  } catch (error) {
-    console.error("Error parsing WebSocket message:", error);
-  }
-}, [readings, props.machineId]);
+                return {
+                ...sensor,
+                readings: [
+                    ...(sensor.readings || []),
+                    {
+                    measurement: match.value,
+                    measuredAt,
+                    },
+                ],
+                };
+            })
+            );
+        } catch (error) {
+            console.error("Error parsing WebSocket message:", error);
+        }
+    }, [readings, props.machineId]);
 
     return (
         <div className={`flex flex-col items-center px-2 w-full h-screen`}>
@@ -98,7 +98,7 @@ export default function MachineSensors(props: { machineId: string, halfHeight?: 
                 <div className="w-full flex-1 overflow-y-auto max-h-[calc(100vh-4rem)] flex flex-col gap-8">
                     {sensors.map((sensor: Sensor) => (
                         <div key={sensor._id} className="mb-8 w-full max-w-2xl mx-auto">
-                            <h2 className="text-lg font-semibold mb-2">{sensor.name}</h2>
+                            <h2 className="text-lg font-semibold mb-2">{sensor.name} ({sensor.unit})</h2>
                             {sensor.readings && sensor.readings.length > 0 ? (
                                 <ResponsiveContainer width="100%" height={250}>
                                     <LineChart data={sensor.readings.map(r => ({

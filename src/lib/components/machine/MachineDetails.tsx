@@ -5,10 +5,11 @@ type MachineDetailsProps = {
   machine: Machine | null;
   status: Machine["status"];
   currentState: Machine["currentState"];
+  liveKw: number;
 };
 
 export default function MachineDetails(props: MachineDetailsProps) {
-  const { machine, status, currentState } = props;
+  const { machine, status, currentState, liveKw } = props;
   if (!machine) {
     return <div>Loading...</div>;
   }
@@ -45,10 +46,10 @@ export default function MachineDetails(props: MachineDetailsProps) {
           {currentState}
         </div>
       </div>
-      <p className="mb-2">Live kW: N/A</p>
+      <p className="mb-2">Live kW: {liveKw.toFixed(2)}</p>
       <p className="mb-2">Max kW: {machine.maxPowerConsumption ?? "N/A"}</p>
       {/* <p className="mb-2">Efficiency: 55%</p> */}
-      <MachineMetrics />
+      <MachineMetrics id={machine._id} />
     </div>
   );
 }
