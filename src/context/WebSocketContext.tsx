@@ -1,8 +1,7 @@
-window.global = window;
-
 import React, { createContext, useState, useRef, useEffect, useContext } from "react";
 import { Client, IMessage } from '@stomp/stompjs';
 import SockJS from 'sockjs-client/dist/sockjs';
+import { API_URLS } from "@/lib/constants/ApiUrls";
 
 interface MachineStatePayload {
   machineId: string;
@@ -26,7 +25,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const clientRef = useRef<Client | null>(null);
 
     useEffect(() => {
-        const socket = new SockJS("https://localhost:8443/ws");
+        const socket = new SockJS(`${API_URLS.WS_URL}/ws`);
         const client = new Client({
         webSocketFactory: () => socket,
         debug: (str) => console.log(str),
