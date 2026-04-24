@@ -15,6 +15,7 @@ import ContactPage from "./pages/(logged-in)/ContactPage";
 import { AuthProvider } from "./context/AuthContext";
 import PrivateRoute from "./lib/components/PrivateRoute";
 import { WebSocketProvider } from "./context/WebSocketContext";
+import { Toaster } from "./lib/components/ui/toaster";
 
 const router = createBrowserRouter([
   { path: "/", element: <LandingPage />, errorElement: <NotFound /> },
@@ -39,6 +40,7 @@ createRoot(document.getElementById("root")!).render(
     <AuthProvider>
       <WebSocketProvider>
         <RouterProvider router={router} />
+         <Toaster />
       </WebSocketProvider>
     </AuthProvider>
   </StrictMode>
