@@ -2,125 +2,195 @@ import { useWebSocket } from "@/context/WebSocketContext";
 import { fetchReadingsForSensor } from "@/lib/api/readingApi";
 import { fetchSensorsByMachine } from "@/lib/api/sensorApi";
 import { Sensor } from "@/lib/types/Sensor";
-import { useState, useEffect } from "react";
-import { ResponsiveContainer, CartesianGrid, XAxis, YAxis, Tooltip, Line, LineChart } from "recharts";
+import { useState, useEffect, useRef, useMemo, memo } from "react";
+import {
+  ResponsiveContainer,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Line,
+  LineChart,
+} from "recharts";
 
-export default function MachineSensors(props: { machineId: string, halfHeight?: boolean }) {
-    const [sensors, setSensors] = useState<Sensor[]>([]);
-    const [loading, setLoading] = useState(true);
-    const { readings } = useWebSocket();
+const GRAPH_UPDATE_INTERVAL_MS = 5000;
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const MAX_DISPLAY_POINTS = 200;
 
-    useEffect(() => {
-        const fetchSensors = async () => {
-            setLoading(true);
-            try {
-                const response = await fetchSensorsByMachine(props.machineId);
-                setSensors(Array.isArray(response) ? response : []);
-            } catch (error) {
-                console.error("Error fetching sensors:", error);
-                setSensors([]);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchSensors();
-    }, [props.machineId]);
+type PendingReading = { sensorName: string; value: number; measuredAt: Date };
+type ChartPoint = { measuredAt: string; measurement: number };
 
-    useEffect(() => {
-        // Only fetch readings if sensors are loaded and not empty
-        if (!Array.isArray(sensors) || sensors.length === 0) return;
+function downsample(readings: Sensor["readings"], max: number): ChartPoint[] {
+  if (!readings || readings.length === 0) return [];
+  if (readings.length <= max) {
+    return readings.map((r) => ({
+      measurement: r.measurement,
+      measuredAt: new Date(r.measuredAt).toLocaleTimeString(),
+    }));
+  }
+  const step = readings.length / max;
+  return Array.from({ length: max }, (_, i) => {
+    const r = readings[Math.floor(i * step)];
+    return {
+      measurement: r.measurement,
+      measuredAt: new Date(r.measuredAt).toLocaleTimeString(),
+    };
+  });
+}
 
-        const fetchAllReadings = async () => {
-            setLoading(true);
-            try {
-                const sensorsWithReadings = await Promise.all(
-                    sensors.map(async (sensor) => {
-                        const readings = await fetchReadingsForSensor(sensor._id);
-                        return { ...sensor, readings };
-                    })
-                );
-                console.log("Sensors with readings:", sensorsWithReadings);
-                setSensors(sensorsWithReadings);
-            } catch (error) {
-                console.error("Error fetching readings:", error);
-            } finally {
-                setLoading(false);
-            }
-        };
+const SensorChart = memo(function SensorChart({ sensor }: { sensor: Sensor }) {
+  const data = useMemo(
+    () => downsample(sensor.readings, MAX_DISPLAY_POINTS),
+    [sensor.readings],
+  );
 
-        fetchAllReadings();
-    }, [sensors.length]); // Only run when number of sensors changes
+  if (!data.length)
+    return <p className="text-xs text-gray-400 dark:text-zinc-500">No readings available.</p>;
 
-    useEffect(() => {
-        if (!readings) return;
+  return (
+    <ResponsiveContainer width="100%" height={220}>
+      <LineChart data={data}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+        <XAxis
+          dataKey="measuredAt"
+          tick={{ fontSize: 10, fill: "#9ca3af" }}
+          interval="preserveStartEnd"
+          axisLine={false}
+          tickLine={false}
+        />
+        <YAxis
+          tick={{ fontSize: 10, fill: "#9ca3af" }}
+          axisLine={false}
+          tickLine={false}
+          width={35}
+        />
+        <Tooltip
+          contentStyle={{ fontSize: 11, borderRadius: 8, border: "1px solid #e5e7eb" }}
+        />
+        <Line
+          type="monotone"
+          dataKey="measurement"
+          stroke="#6366f1"
+          strokeWidth={2}
+          dot={false}
+          isAnimationActive={false}
+        />
+      </LineChart>
+    </ResponsiveContainer>
+  );
+});
 
-        try {
-            const parsed = JSON.parse(readings);
-            const measuredAt = new Date(parsed.measuredAt);
-            const incomingReadings = parsed.readings;
+export default function MachineSensors(props: {
+  machineId: string;
+  machineName?: string;
+  halfHeight?: boolean;
+}) {
+  const [sensors, setSensors] = useState<Sensor[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { readings } = useWebSocket();
+  const pendingRef = useRef<PendingReading[]>([]);
 
-            if (!Array.isArray(incomingReadings)) return;
+  useEffect(() => {
+    const fetchSensors = async () => {
+      setLoading(true);
+      try {
+        const response = await fetchSensorsByMachine(props.machineId);
+        setSensors(Array.isArray(response) ? response : []);
+      } catch {
+        setSensors([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchSensors();
+  }, [props.machineId]);
 
-            setSensors(prevSensors =>
-            prevSensors.map(sensor => {
-                // find matching reading for this sensor
-                const match = incomingReadings.find(
-                (r: any) =>
-                    r.machineId === props.machineId &&
-                    r.sensorName === sensor.name
-                );
+  useEffect(() => {
+    if (!Array.isArray(sensors) || sensors.length === 0) return;
 
-                if (!match) return sensor;
+    const fetchAllReadings = async () => {
+      setLoading(true);
+      try {
+        const sensorsWithReadings = await Promise.all(
+          sensors.map(async (sensor) => {
+            const readings = await fetchReadingsForSensor(sensor._id);
+            return { ...sensor, readings };
+          }),
+        );
+        setSensors(sensorsWithReadings);
+      } catch {
+        // keep existing data
+      } finally {
+        setLoading(false);
+      }
+    };
 
-                return {
-                ...sensor,
-                readings: [
-                    ...(sensor.readings || []),
-                    {
-                    measurement: match.value,
-                    measuredAt,
-                    },
-                ],
-                };
-            })
-            );
-        } catch (error) {
-            console.error("Error parsing WebSocket message:", error);
+    fetchAllReadings();
+  }, [sensors.length]);
+
+  useEffect(() => {
+    if (!readings) return;
+    try {
+      const parsed = JSON.parse(readings);
+      const measuredAt = new Date(parsed.measuredAt);
+      const incomingReadings = parsed.readings;
+      if (!Array.isArray(incomingReadings)) return;
+      for (const r of incomingReadings) {
+        if (r.machineId === props.machineId) {
+          pendingRef.current.push({
+            sensorName: r.sensorName,
+            value: r.value,
+            measuredAt,
+          });
         }
-    }, [readings, props.machineId]);
+      }
+    } catch {
+      // ignore malformed messages
+    }
+  }, [readings, props.machineId]);
 
-    return (
-        <div className={`flex flex-col items-center px-2 w-full h-screen`}>
-            <h1 className="text-2xl font-bold mb-4">Machine sensors</h1>
-            {loading ? (
-                <p>Loading sensors...</p>
-            ) : Array.isArray(sensors) && sensors.length > 0 ? (
-                <div className="w-full flex-1 overflow-y-auto max-h-[calc(100vh-4rem)] flex flex-col gap-8">
-                    {sensors.map((sensor: Sensor) => (
-                        <div key={sensor._id} className="mb-8 w-full max-w-2xl mx-auto">
-                            <h2 className="text-lg font-semibold mb-2">{sensor.name} ({sensor.unit})</h2>
-                            {sensor.readings && sensor.readings.length > 0 ? (
-                                <ResponsiveContainer width="100%" height={250}>
-                                    <LineChart data={sensor.readings.map(r => ({
-                                        ...r,
-                                        measuredAt: new Date(r.measuredAt).toLocaleString(),
-                                    }))}>
-                                        <CartesianGrid strokeDasharray="3 3" />
-                                        <XAxis dataKey="measuredAt" tick={{ fontSize: 12 }} />
-                                        <YAxis />
-                                        <Tooltip />
-                                        <Line type="monotone" dataKey="measurement" stroke="#8884d8" dot={false} />
-                                    </LineChart>
-                                </ResponsiveContainer>
-                            ) : (
-                                <p className="text-gray-500">No readings available.</p>
-                            )}
-                        </div>
-                    ))}
-                </div>
-            ) : (
-                <p>No sensors found for this machine.</p>
-            )}
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (pendingRef.current.length === 0) return;
+      const pending = pendingRef.current;
+      pendingRef.current = [];
+      const cutoff = new Date(Date.now() - ONE_DAY_MS);
+      setSensors((prevSensors) =>
+        prevSensors.map((sensor) => {
+          const newReadings = pending
+            .filter((r) => r.sensorName === sensor.name)
+            .map((r) => ({ measurement: r.value, measuredAt: r.measuredAt }));
+          if (newReadings.length === 0) return sensor;
+          const merged = [...(sensor.readings || []), ...newReadings].filter(
+            (r) => new Date(r.measuredAt) >= cutoff,
+          );
+          return { ...sensor, readings: merged };
+        }),
+      );
+    }, GRAPH_UPDATE_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, []);
+
+  const sensorsWithData = sensors.filter((s) => s.readings && s.readings.length > 0);
+
+  if (!loading && sensorsWithData.length === 0) return null;
+
+  return (
+    <>
+      {sensorsWithData.map((sensor: Sensor) => (
+        <div
+          key={sensor._id}
+          className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm p-5"
+        >
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500 mb-3">
+            {sensor.name}{" "}
+            <span className="normal-case font-normal tracking-normal">
+              ({sensor.unit})
+            </span>
+          </p>
+          <SensorChart sensor={sensor} />
         </div>
-    );
+      ))}
+    </>
+  );
 }

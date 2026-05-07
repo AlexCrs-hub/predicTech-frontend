@@ -9,7 +9,7 @@ export default function Layout() {
     <SidebarProvider className="flex w-max-[1920px]">
       <AppSidebar />
       <Navbar />
-      <div className="pt-[5.5rem] px-8 h-screen py-8 w-full">
+      <div className="pt-[4.5rem] h-screen w-full">
         <CustomTrigger />
         <Outlet />
       </div>
