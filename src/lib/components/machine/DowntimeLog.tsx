@@ -147,10 +147,12 @@ export default function DowntimeLog({
   machineId,
   currentState,
   refreshKey = 0,
+  periodHours,
 }: {
   machineId: string;
   currentState: string;
   refreshKey?: number;
+  periodHours?: number;
 }) {
   const [entries, setEntries] = useState<DowntimeEntry[]>(() => load(machineId));
 
@@ -175,6 +177,13 @@ export default function DowntimeLog({
     currentState === "unplanned downtime" ||
     currentState === "planned downtime" ||
     currentState === "alarm";
+
+  const visibleEntries = periodHours
+    ? entries.filter((e) => {
+        const cutoff = Date.now() - periodHours * 60 * 60 * 1000;
+        return new Date(e.loggedAt).getTime() >= cutoff;
+      })
+    : entries;
 
   return (
     <div className="w-full flex flex-col gap-3">
@@ -201,19 +210,19 @@ export default function DowntimeLog({
         </div>
       )}
 
-      {entries.length > 0 ? (
+      {visibleEntries.length > 0 ? (
         <div className="flex flex-col gap-1.5 max-h-64 overflow-y-auto pr-0.5">
-          {entries.map((e, i) => (
+          {visibleEntries.map((e, i) => (
             <EntryRow
               key={`${e.loggedAt}-${i}`}
               entry={e}
-              onEscalate={(esc) => escalate(i, esc)}
+              onEscalate={(esc) => escalate(entries.indexOf(e), esc)}
             />
           ))}
         </div>
       ) : (
         <p className="text-xs text-gray-400 dark:text-zinc-500">
-          No downtime entries recorded.
+          {entries.length > 0 ? "No entries in selected period." : "No downtime entries recorded."}
         </p>
       )}
     </div>

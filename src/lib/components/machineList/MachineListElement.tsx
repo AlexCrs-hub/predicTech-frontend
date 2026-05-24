@@ -14,7 +14,7 @@ const STATE_LABEL: Record<Machine["currentState"], string> = {
   "planned downtime":   "Planned DT",
 };
 
-type Colors = { ring: string; accent: string; badge: string; dot: string; stripClass: string };
+type Colors = { ring: string; accent: string; badge: string; dot: string; stripClass: string; cardClass: string };
 
 const STATE_COLORS: Record<Machine["currentState"], Colors> = {
   normal: {
@@ -22,24 +22,28 @@ const STATE_COLORS: Record<Machine["currentState"], Colors> = {
     stripClass: "bg-green-500",
     badge: "bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800",
     dot: "bg-green-500",
+    cardClass: "border-green-200 dark:border-green-800/70 bg-green-50/40 dark:bg-green-900/10",
   },
   alarm: {
     ring: "#ef4444", accent: "#ef4444",
     stripClass: "bg-red-500",
     badge: "bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800",
     dot: "bg-red-500",
+    cardClass: "border-red-200 dark:border-red-800/70 bg-red-50/30 dark:bg-red-900/10",
   },
   "unplanned downtime": {
     ring: "#f97316", accent: "#f97316",
     stripClass: "bg-orange-500",
     badge: "bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 border border-orange-200 dark:border-orange-800",
     dot: "bg-orange-500",
+    cardClass: "border-orange-200 dark:border-orange-800/70 bg-orange-50/30 dark:bg-orange-900/10",
   },
   "planned downtime": {
     ring: "#9ca3af", accent: "#9ca3af",
     stripClass: "bg-gray-400",
     badge: "bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-zinc-400 border border-gray-200 dark:border-zinc-600",
     dot: "bg-gray-400",
+    cardClass: "border-gray-300 dark:border-zinc-700 bg-gray-100/70 dark:bg-zinc-800/70 opacity-75",
   },
 };
 
@@ -101,10 +105,10 @@ function SparkBars({ machineId, color }: { machineId: string; color: string }) {
 
 // ── Stat cell ─────────────────────────────────────────────────────────────────
 
-function StatCell({ label, value }: { label: string; value: string }) {
+function StatCell({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
     <div className="flex flex-col items-center justify-center py-3 flex-1">
-      <span className="text-base font-bold text-gray-900 dark:text-zinc-50 leading-none">{value}</span>
+      <span className="text-base font-bold leading-none" style={{ color: color ?? "#111827" }}>{value}</span>
       <span className="text-[10px] text-gray-400 dark:text-zinc-500 mt-1 uppercase tracking-wide">{label}</span>
     </div>
   );
@@ -125,10 +129,14 @@ export default function MachineListElement({
 
   return (
     <Link to={`/app/machine?machineId=${_id}`} className="block group">
-      <div className="rounded-2xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm overflow-hidden group-hover:shadow-lg group-hover:-translate-y-1 transition-all duration-200">
+      <div className={`rounded-2xl border shadow-sm overflow-hidden group-hover:shadow-lg group-hover:-translate-y-1 transition-all duration-200 ${
+        openTickets.length > 0
+          ? "border-yellow-400 dark:border-yellow-600 bg-yellow-50/60 dark:bg-yellow-900/10"
+          : colors.cardClass
+      }`}>
 
         {/* top accent strip */}
-        <div className={`h-[3px] w-full ${colors.stripClass}`} />
+        <div className={`h-1.5 w-full ${colors.stripClass}`} />
 
         {/* header */}
         <div className="flex items-center justify-between px-5 pt-4 pb-1 gap-2">
@@ -137,7 +145,7 @@ export default function MachineListElement({
           </span>
           <div className="flex items-center gap-1.5 shrink-0">
             {openTickets.length > 0 && (
-              <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800">
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-500 border border-yellow-300 dark:border-yellow-700">
                 🎫 {openTickets.length}
               </span>
             )}
@@ -158,14 +166,14 @@ export default function MachineListElement({
         </div>
 
         {/* 3-column numbers */}
-        <div className="flex border-t border-gray-100 dark:border-zinc-800 divide-x divide-gray-100 dark:divide-zinc-800">
-          <StatCell label="Utilization" value={`${util.runtimePct}%`} />
-          <StatCell label="Cutting"     value={`${util.cuttingPct}%`} />
-          <StatCell label="Cycles"      value={String(util.cycles)}   />
+        <div className="flex border-t border-gray-100 dark:border-zinc-800/60 divide-x divide-gray-100 dark:divide-zinc-800/60">
+          <StatCell label="Utilization" value={`${util.runtimePct}%`} color={colors.ring} />
+          <StatCell label="Cutting"     value={`${util.cuttingPct}%`} color={colors.accent} />
+          <StatCell label="Cycles"      value={String(util.cycles)}   color="#6b7280" />
         </div>
 
         {/* power footer */}
-        <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-800/50">
+        <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 dark:border-zinc-800/60" style={{ backgroundColor: `${colors.ring}10` }}>
           <SparkBars machineId={_id} color={colors.ring} />
           <div className="flex items-center gap-4 text-xs">
             <span className="text-gray-400 dark:text-zinc-500">
