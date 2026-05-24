@@ -14,36 +14,39 @@ const STATE_LABEL: Record<Machine["currentState"], string> = {
   "planned downtime":   "Planned DT",
 };
 
-type Colors = { ring: string; accent: string; badge: string; dot: string; stripClass: string; cardClass: string };
+// Fixed chart palette — independent of machine state
+const CHART = {
+  primary:   "#3b82f6", // blue-500  — utilization / donut / sparkbars
+  secondary: "#8b5cf6", // violet-500 — cutting
+  idle:      "#94a3b8", // slate-400  — idle
+};
+
+type Colors = { badge: string; dot: string; stripClass: string; cardClass: string };
 
 const STATE_COLORS: Record<Machine["currentState"], Colors> = {
   normal: {
-    ring: "#22c55e", accent: "#22c55e",
     stripClass: "bg-green-500",
-    badge: "bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800",
+    badge: "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700",
     dot: "bg-green-500",
-    cardClass: "border-green-200 dark:border-green-800/70 bg-green-50/40 dark:bg-green-900/10",
+    cardClass: "border-green-300 dark:border-green-800 bg-green-50 dark:bg-green-900/15",
   },
   alarm: {
-    ring: "#ef4444", accent: "#ef4444",
     stripClass: "bg-red-500",
-    badge: "bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800",
+    badge: "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400 border border-red-300 dark:border-red-700",
     dot: "bg-red-500",
-    cardClass: "border-red-200 dark:border-red-800/70 bg-red-50/30 dark:bg-red-900/10",
+    cardClass: "border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/15",
   },
   "unplanned downtime": {
-    ring: "#f97316", accent: "#f97316",
     stripClass: "bg-orange-500",
-    badge: "bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 border border-orange-200 dark:border-orange-800",
+    badge: "bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-400 border border-orange-300 dark:border-orange-700",
     dot: "bg-orange-500",
-    cardClass: "border-orange-200 dark:border-orange-800/70 bg-orange-50/30 dark:bg-orange-900/10",
+    cardClass: "border-orange-300 dark:border-orange-800 bg-orange-50 dark:bg-orange-900/15",
   },
   "planned downtime": {
-    ring: "#9ca3af", accent: "#9ca3af",
-    stripClass: "bg-gray-400",
-    badge: "bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-zinc-400 border border-gray-200 dark:border-zinc-600",
-    dot: "bg-gray-400",
-    cardClass: "border-gray-300 dark:border-zinc-700 bg-gray-100/70 dark:bg-zinc-800/70 opacity-75",
+    stripClass: "bg-slate-400",
+    badge: "bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-slate-600",
+    dot: "bg-slate-400",
+    cardClass: "border-gray-300 dark:border-zinc-700 bg-gray-100/80 dark:bg-zinc-800/80 opacity-80",
   },
 };
 
@@ -135,8 +138,8 @@ export default function MachineListElement({
           : colors.cardClass
       }`}>
 
-        {/* top accent strip */}
-        <div className={`h-1.5 w-full ${colors.stripClass}`} />
+        {/* top accent strip — state color */}
+        <div className={`h-1.5 w-full ${openTickets.length > 0 ? "bg-amber-400" : colors.stripClass}`} />
 
         {/* header */}
         <div className="flex items-center justify-between px-5 pt-4 pb-1 gap-2">
@@ -158,23 +161,23 @@ export default function MachineListElement({
 
         {/* donut + stats row */}
         <div className="flex items-center gap-4 px-5 py-4">
-          <DonutRing pct={util.runtimePct} color={colors.ring} />
+          <DonutRing pct={util.runtimePct} color={CHART.primary} />
           <div className="flex-1 flex flex-col gap-2">
-            <StatBar label="Cutting" pct={util.cuttingPct} color={colors.ring} />
-            <StatBar label="Idle"    pct={util.idlePct}    color="#9ca3af" />
+            <StatBar label="Cutting" pct={util.cuttingPct} color={CHART.secondary} />
+            <StatBar label="Idle"    pct={util.idlePct}    color={CHART.idle} />
           </div>
         </div>
 
         {/* 3-column numbers */}
         <div className="flex border-t border-gray-100 dark:border-zinc-800/60 divide-x divide-gray-100 dark:divide-zinc-800/60">
-          <StatCell label="Utilization" value={`${util.runtimePct}%`} color={colors.ring} />
-          <StatCell label="Cutting"     value={`${util.cuttingPct}%`} color={colors.accent} />
+          <StatCell label="Utilization" value={`${util.runtimePct}%`} color={CHART.primary} />
+          <StatCell label="Cutting"     value={`${util.cuttingPct}%`} color={CHART.secondary} />
           <StatCell label="Cycles"      value={String(util.cycles)}   color="#6b7280" />
         </div>
 
         {/* power footer */}
-        <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 dark:border-zinc-800/60" style={{ backgroundColor: `${colors.ring}10` }}>
-          <SparkBars machineId={_id} color={colors.ring} />
+        <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 dark:border-zinc-800/60" style={{ backgroundColor: `${CHART.primary}12` }}>
+          <SparkBars machineId={_id} color={CHART.primary} />
           <div className="flex items-center gap-4 text-xs">
             <span className="text-gray-400 dark:text-zinc-500">
               Live{" "}
