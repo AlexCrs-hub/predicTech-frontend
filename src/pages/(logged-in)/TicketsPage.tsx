@@ -4,6 +4,33 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/lib/components/ui/ca
 import { Button } from "@/lib/components/ui/button";
 import { Ticket, History } from "lucide-react";
 
+const PERIODS = [
+  { label: "1 day",   hours: 24  },
+  { label: "7 days",  hours: 168 },
+  { label: "1 month", hours: 720 },
+] as const;
+type Period = typeof PERIODS[number];
+
+function PeriodToggle({ value, onChange }: { value: Period; onChange: (p: Period) => void }) {
+  return (
+    <div className="flex rounded-md border border-gray-200 dark:border-zinc-700 overflow-hidden">
+      {PERIODS.map((p) => (
+        <button
+          key={p.label}
+          onClick={() => onChange(p)}
+          className={`px-3 py-1 text-xs transition-colors ${
+            value.label === p.label
+              ? "bg-gray-900 dark:bg-zinc-100 text-white dark:text-zinc-900 font-semibold"
+              : "bg-white dark:bg-zinc-900 text-gray-500 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800"
+          }`}
+        >
+          {p.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 const STATUS_LABEL: Record<ReportStatus, string> = {
   new: "New",
   in_progress: "In Progress",
@@ -167,32 +194,53 @@ function TicketCard({ report }: { report: Report }) {
 
 export default function TicketsPage() {
   const { reports, clearAllReports } = useNotifications();
+  const [period, setPeriod] = useState<Period>(PERIODS[1]); // default 7 days
 
-  const active = [...reports].filter((r) => r.status !== "fixed").reverse();
-  const history = [...reports].filter((r) => r.status === "fixed").reverse();
+  const cutoff = new Date(Date.now() - period.hours * 60 * 60 * 1000);
+  const inPeriod = (r: Report) => new Date(r.sentAt) >= cutoff;
+
+  const active  = [...reports].filter((r) => r.status !== "fixed" && inPeriod(r)).reverse();
+  const history = [...reports].filter((r) => r.status === "fixed"  && inPeriod(r)).reverse();
+  const hiddenCount = reports.length - active.length - history.length;
 
   return (
     <div className="w-full max-w-3xl mx-auto p-6 flex flex-col gap-6">
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center gap-3">
-          <Ticket className="size-5 text-muted-foreground" />
-          <h1 className="text-xl font-bold">Active Tickets</h1>
+      {/* header row with period toggle */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <Ticket className="size-5 text-muted-foreground" />
+        <h1 className="text-xl font-bold">Tickets</h1>
+        <div className="ml-auto flex items-center gap-3">
+          <PeriodToggle value={period} onChange={setPeriod} />
           {reports.length > 0 && (
             <button
               onClick={clearAllReports}
-              className="ml-auto text-xs text-muted-foreground hover:text-red-500 transition-colors"
+              className="text-xs text-muted-foreground hover:text-red-500 transition-colors"
             >
               Clear all
             </button>
           )}
         </div>
+      </div>
+
+      {hiddenCount > 0 && (
+        <p className="text-xs text-muted-foreground -mt-3">
+          {hiddenCount} older ticket{hiddenCount !== 1 ? "s" : ""} outside selected period.
+        </p>
+      )}
+
+      {/* active */}
+      <div className="flex flex-col gap-3">
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+          Active ({active.length})
+        </h2>
         {active.length === 0 ? (
-          <p className="text-muted-foreground text-sm">No active tickets.</p>
+          <p className="text-muted-foreground text-sm">No active tickets in this period.</p>
         ) : (
           active.map((r) => <TicketCard key={r.id} report={r} />)
         )}
       </div>
 
+      {/* history */}
       {history.length > 0 && (
         <div className="flex flex-col gap-3">
           <div className="flex items-center gap-3 border-t pt-4">

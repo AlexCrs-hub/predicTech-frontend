@@ -12,10 +12,18 @@ export type ThresholdAlert = {
 
 export type ReportStatus = "new" | "in_progress" | "needs_more_time" | "fixed";
 
+export type EscalationLevel = "supervisor" | "manager" | "director";
+
 export type StatusEntry = {
   status: ReportStatus;
   comment: string;
   changedAt: string;
+};
+
+export type EscalationEntry = {
+  level: EscalationLevel;
+  note: string;
+  escalatedAt: string;
 };
 
 export type Report = ThresholdAlert & {
@@ -23,6 +31,7 @@ export type Report = ThresholdAlert & {
   sentAt: string;
   status: ReportStatus;
   statusHistory: StatusEntry[];
+  escalation?: EscalationEntry | null;
 };
 
 const REPORTS_KEY = "predictech_reports";
@@ -49,6 +58,7 @@ const loadReports = (): Report[] => {
       ...r,
       status: (r.status as ReportStatus) ?? "new",
       statusHistory: Array.isArray(r.statusHistory) ? r.statusHistory : [],
+      escalation: r.escalation ?? null,
       comment:
         PLACEHOLDER_COMMENTS[r.comment?.trim()] ??
         (r.comment?.trim().length < 6
@@ -79,6 +89,7 @@ interface NotificationContextType {
   sendReport: (id: string, comment: string) => void;
   reports: Report[];
   updateReportStatus: (id: string, status: ReportStatus, comment: string) => void;
+  escalateReport: (id: string, level: EscalationLevel, note: string) => void;
   createTicket: (data: CreateTicketData) => void;
   clearAllReports: () => void;
 }
@@ -89,14 +100,13 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
   const [alerts, setAlerts] = useState<ThresholdAlert[]>([]);
   const [reports, setReports] = useState<Report[]>(loadReports);
 
-  // Keep a ref in sync so callbacks can read current alerts without stale closures
   const alertsRef = useRef(alerts);
   useEffect(() => { alertsRef.current = alerts; }, [alerts]);
 
   const addAlert = useCallback((alert: Omit<ThresholdAlert, "id">) => {
     setAlerts((prev) => {
       const already = prev.some(
-        (a) => a.machineId === alert.machineId && a.sensorName === alert.sensorName
+        (a) => a.machineId === alert.machineId && a.sensorName === alert.sensorName,
       );
       if (already) return prev;
       return [...prev, { ...alert, id: `${Date.now()}-${Math.random()}` }];
@@ -110,7 +120,6 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
   const sendReport = useCallback((id: string, comment: string) => {
     const alert = alertsRef.current.find((a) => a.id === id);
     if (!alert) return;
-
     const now = new Date().toISOString();
     const report: Report = {
       ...alert,
@@ -118,12 +127,9 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
       sentAt: now,
       status: "new",
       statusHistory: [{ status: "new", comment: "Report created", changedAt: now }],
+      escalation: null,
     };
-
-    // Remove from alerts
     setAlerts((prev) => prev.filter((a) => a.id !== id));
-
-    // Add to reports — functional update avoids stale closures
     setReports((prev) => {
       const updated = [...prev, report];
       saveReports(updated);
@@ -136,15 +142,29 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
       setReports((prev) => {
         const entry: StatusEntry = { status, comment, changedAt: new Date().toISOString() };
         const updated = prev.map((r) =>
-          r.id !== id
-            ? r
-            : { ...r, status, statusHistory: [...(r.statusHistory ?? []), entry] }
+          r.id !== id ? r : { ...r, status, statusHistory: [...(r.statusHistory ?? []), entry] },
         );
         saveReports(updated);
         return updated;
       });
     },
-    []
+    [],
+  );
+
+  const escalateReport = useCallback(
+    (id: string, level: EscalationLevel, note: string) => {
+      setReports((prev) => {
+        const escalation: EscalationEntry = {
+          level,
+          note,
+          escalatedAt: new Date().toISOString(),
+        };
+        const updated = prev.map((r) => (r.id !== id ? r : { ...r, escalation }));
+        saveReports(updated);
+        return updated;
+      });
+    },
+    [],
   );
 
   const clearAllReports = useCallback(() => {
@@ -166,6 +186,7 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
       sentAt: now,
       status: "new",
       statusHistory: [{ status: "new", comment: "Ticket created", changedAt: now }],
+      escalation: null,
     };
     setReports((prev) => {
       const updated = [...prev, report];
@@ -176,7 +197,7 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <NotificationContext.Provider
-      value={{ alerts, addAlert, dismissAlert, sendReport, reports, updateReportStatus, createTicket, clearAllReports }}
+      value={{ alerts, addAlert, dismissAlert, sendReport, reports, updateReportStatus, escalateReport, createTicket, clearAllReports }}
     >
       {children}
     </NotificationContext.Provider>
