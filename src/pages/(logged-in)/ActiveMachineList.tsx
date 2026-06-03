@@ -8,18 +8,20 @@ import { useNotifications, Report } from "@/context/NotificationContext";
 import {
   getSimulatedSensorValue,
   SENSOR_THRESHOLD,
-  SENSOR_LABEL,
   logDowntimeEntry,
 } from "@/lib/utils/machineSimulation";
 
+type StateOverride = { state: Machine["currentState"]; since?: number };
+
 export default function ActiveMachineList() {
-  const [machines, setMachines] = useState<Machine[]>([]);
-  const [simValues, setSimValues] = useState<Record<string, number>>({});
+  const [machines, setMachines]     = useState<Machine[]>([]);
+  const [simValues, setSimValues]   = useState<Record<string, number>>({});
   const [alertQueue, setAlertQueue] = useState<BreachAlert[]>([]);
+  const [overrides, setOverrides]   = useState<Record<string, StateOverride>>({});
   const triggerIndexRef = useRef(0);
 
   const { machineStates, liveKw } = useWebSocket();
-  const { createTicket, reports } = useNotifications();
+  const { createTicket, reports }  = useNotifications();
 
   useEffect(() => {
     fetchAllMachines()
@@ -27,7 +29,7 @@ export default function ActiveMachineList() {
       .catch(() => setMachines([]));
   }, []);
 
-  // Visual-only tick — updates the sensor bars, no auto-alerting
+  // Sensor simulation — threshold breach detection only
   useEffect(() => {
     if (machines.length === 0) return;
     const tick = () => {
@@ -41,10 +43,27 @@ export default function ActiveMachineList() {
     return () => clearInterval(id);
   }, [machines]);
 
+  // ── machine state helpers ────────────────────────────────────────────────────
+
+  const setMachineState = (id: string, state: Machine["currentState"]) => {
+    setOverrides((prev) => ({
+      ...prev,
+      [id]: { state, since: state === "in maintenance" ? Date.now() : undefined },
+    }));
+  };
+
+  const deriveState = (machine: Machine): Machine["currentState"] => {
+    if (overrides[machine._id]) return overrides[machine._id].state;
+    const ws = machineStates[machine._id];
+    if (ws?.state === "ON" && ws?.health === "HEALTHY") return "on";
+    return "idle";
+  };
+
+  // ── threshold breach ─────────────────────────────────────────────────────────
+
   const triggerAlert = () => {
     if (machines.length === 0) return;
     const queued = new Set(alertQueue.map((a) => a.machineId));
-    // Find next machine not already in queue, cycling through list
     for (let i = 0; i < machines.length; i++) {
       const idx = (triggerIndexRef.current + i) % machines.length;
       const m = machines[idx];
@@ -59,7 +78,6 @@ export default function ActiveMachineList() {
   };
 
   const currentAlert = alertQueue[0];
-
   const dismissCurrent = () => setAlertQueue((prev) => prev.slice(1));
 
   const handleLogReason = (machineId: string, reason: string) => {
@@ -70,49 +88,31 @@ export default function ActiveMachineList() {
   const handleCreateTicket = (machineId: string, comment: string) => {
     const machine = machines.find((m) => m._id === machineId);
     if (!machine) return;
-    const value = simValues[machineId] ?? 0;
     createTicket({
       machineId,
       machineName: machine.name,
-      sensorName: SENSOR_LABEL,
-      value,
+      sensorName: "Power",
+      value: simValues[machineId] ?? 0,
       threshold: SENSOR_THRESHOLD,
       comment,
     });
     dismissCurrent();
   };
 
-  // Resolve each machine's state + open tickets for grouping
-  type EnrichedMachine = Machine & {
-    currentState: Machine["currentState"];
-    status: "on" | "off" | "idle";
-    hasTickets: boolean;
-  };
+  // ── grouping ─────────────────────────────────────────────────────────────────
 
-  const enriched: EnrichedMachine[] = machines.map((machine) => {
-    const wsState = machineStates[machine._id];
-    let status: "on" | "off" | "idle" = "off";
-    if (wsState?.state) {
-      const s = wsState.state.toLowerCase();
-      if (s === "on" || s === "off" || s === "idle") status = s as typeof status;
-    }
-    const currentState: Machine["currentState"] =
-      wsState?.health?.toLowerCase() === "healthy"
-        ? "normal"
-        : wsState?.health?.toLowerCase() === "stale"
-        ? "unplanned downtime"
-        : wsState?.health?.toLowerCase() === "disconnected"
-        ? "alarm"
-        : "planned downtime";
-    const hasTickets = reports.some(
-      (r: Report) => r.machineId === machine._id && r.status !== "fixed",
-    );
-    return { ...machine, currentState, status, hasTickets };
-  });
+  type EnrichedMachine = Machine & { currentState: Machine["currentState"]; hasTickets: boolean };
 
-  const withTickets = enriched.filter((m) => m.hasTickets);
-  const running     = enriched.filter((m) => !m.hasTickets && m.currentState === "normal");
-  const offline     = enriched.filter((m) => !m.hasTickets && m.currentState !== "normal");
+  const enriched: EnrichedMachine[] = machines.map((machine) => ({
+    ...machine,
+    currentState: deriveState(machine),
+    hasTickets: reports.some((r: Report) => r.machineId === machine._id && r.status !== "fixed"),
+  }));
+
+  const withTickets    = enriched.filter((m) => m.hasTickets);
+  const running        = enriched.filter((m) => !m.hasTickets && m.currentState === "on");
+  const idling         = enriched.filter((m) => !m.hasTickets && m.currentState === "idle");
+  const inMaintenance  = enriched.filter((m) => !m.hasTickets && m.currentState === "in maintenance");
 
   const renderGrid = (list: EnrichedMachine[]) => (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
@@ -124,9 +124,12 @@ export default function ActiveMachineList() {
           status={machine.status}
           currentState={machine.currentState}
           liveKw={liveKw[machine._id] || 0}
-          sensorValue={simValues[machine._id]}
-          sensorThreshold={SENSOR_THRESHOLD}
-          sensorLabel={SENSOR_LABEL}
+          maxPowerConsumption={machine.maxPowerConsumption}
+          onStart={()       => setMachineState(machine._id, "on")}
+          onStop={()        => setMachineState(machine._id, "idle")}
+          onMaintenance={() => setMachineState(machine._id, "in maintenance")}
+          maintenanceSince={overrides[machine._id]?.state === "in maintenance"
+            ? overrides[machine._id].since : undefined}
         />
       ))}
     </div>
@@ -135,16 +138,13 @@ export default function ActiveMachineList() {
   const SectionHeader = ({ label, count, dot }: { label: string; count: number; dot: string }) => (
     <div className="flex items-center gap-2 mb-3">
       <span className={`w-2 h-2 rounded-full ${dot}`} />
-      <span className="text-xs font-semibold uppercase tracking-widest text-gray-500 dark:text-zinc-400">
-        {label}
-      </span>
+      <span className="text-xs font-semibold uppercase tracking-widest text-gray-500 dark:text-zinc-400">{label}</span>
       <span className="text-xs text-gray-400 dark:text-zinc-600 ml-1">({count})</span>
     </div>
   );
 
   return (
     <div className="flex flex-col gap-8 pb-10 bg-gray-50 dark:bg-zinc-950 min-h-screen p-5">
-      {/* trigger button */}
       <div>
         <button
           onClick={triggerAlert}
@@ -168,10 +168,17 @@ export default function ActiveMachineList() {
         </section>
       )}
 
-      {offline.length > 0 && (
+      {idling.length > 0 && (
         <section>
-          <SectionHeader label="Off / Downtime" count={offline.length} dot="bg-red-500" />
-          {renderGrid(offline)}
+          <SectionHeader label="Idle" count={idling.length} dot="bg-amber-400" />
+          {renderGrid(idling)}
+        </section>
+      )}
+
+      {inMaintenance.length > 0 && (
+        <section>
+          <SectionHeader label="In Maintenance" count={inMaintenance.length} dot="bg-blue-500" />
+          {renderGrid(inMaintenance)}
         </section>
       )}
 
@@ -179,7 +186,6 @@ export default function ActiveMachineList() {
         <p className="text-sm text-gray-400 dark:text-zinc-500">No machines found.</p>
       )}
 
-      {/* Threshold breach modal queue */}
       {currentAlert && (
         <ThresholdBreachModal
           alert={currentAlert}

@@ -170,6 +170,7 @@ export default function OverviewPage() {
   const [period, setPeriod] = useState<Period>(PERIODS[0]);
   const [selectedMachine, setSelectedMachine] = useState<string>("all");
   const [costPeriod, setCostPeriod] = useState<CostPeriod>(COST_PERIODS[1]);
+  const [dtFilter, setDtFilter] = useState("");
   const { reports } = useNotifications();
   const { liveKw } = useWebSocket();
 
@@ -399,9 +400,16 @@ export default function OverviewPage() {
               <SectionHeading>Top downtime causes</SectionHeading>
               <ExportBtn onClick={exportDowntimeCauses} />
             </div>
+            <input
+              type="text"
+              value={dtFilter}
+              onChange={(e) => setDtFilter(e.target.value)}
+              placeholder="Filter causes…"
+              className="text-sm rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-1.5 text-gray-800 dark:text-zinc-200 placeholder:text-gray-400 dark:placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
             <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm p-5">
               <div className="flex flex-col gap-3">
-                {DOWNTIME_CAUSES.map(({ name, minutes, pct, color }) => (
+                {DOWNTIME_CAUSES.filter((c) => c.name.toLowerCase().includes(dtFilter.toLowerCase())).map(({ name, minutes, pct, color }) => (
                   <div key={name} className="flex items-center gap-3">
                     <span className="w-28 text-sm text-gray-600 dark:text-zinc-400 shrink-0">{name}</span>
                     <div className="flex-1 h-4 rounded-full bg-gray-100 dark:bg-zinc-800 overflow-hidden">

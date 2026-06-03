@@ -3,6 +3,6 @@ export type Machine = {
   _id: string;
   liveKw: number;
   maxPowerConsumption?: number;
-  currentState: "alarm" | "normal" | "unplanned downtime" | "planned downtime";
+  currentState: "on" | "idle" | "in maintenance";
   status: "on" | "off" | "idle";
 };
