@@ -13,13 +13,18 @@ import {
 } from "recharts";
 import DowntimeLog from "@/lib/components/machine/DowntimeLog";
 import MachineSensors from "@/lib/components/machine/MachineSensors";
-import {
-  DOWNTIME_REASONS,
-  logDowntimeEntry,
-  getMachineUtilization,
-} from "@/lib/utils/machineSimulation";
+import { getMachineUtilization } from "@/lib/utils/machineSimulation";
 import { downloadCsv } from "@/lib/utils/exportCsv";
 import InteractiveTimeline from "@/lib/components/machine/InteractiveTimeline";
+import {
+  fetchUtilization, fetchAvailability, fetchCutting,
+  fetchCycles, fetchDowntimeHours, fetchPlannedUnplanned,
+  toPeriod,
+} from "@/lib/api/metricsApi";
+import {
+  fetchDowntimeStats, DowntimeStats, DowntimeReason,
+  REASON_LABEL, REASON_COLOR, ALL_REASONS,
+} from "@/lib/api/downtimeRecordsApi";
 
 const ENERGY_RATE = 0.15; // €/kWh
 
@@ -28,22 +33,6 @@ const COST_PERIODS = [
   { label: "30d", days: 30 },
 ] as const;
 type CostPeriod = typeof COST_PERIODS[number];
-
-// ── fake data ─────────────────────────────────────────────────────────────────
-
-const OEE = 82.7;
-const OEE_DELTA = +5.2;
-const AVAILABILITY = 91.2;
-const PERFORMANCE = 88.4;
-const QUALITY = 97.1;
-
-const PARTS_PRODUCED = 347;
-const PARTS_TARGET = 420;
-
-const CYCLE_TIME_S = 42.3;
-const CYCLE_TARGET_S = 45;
-
-const CYCLE_TREND = [38, 41, 43, 40, 42, 44, 42.3].map((v, i) => ({ i, v }));
 
 type TimelineSegment = {
   label: "Running" | "Idle" | "Down" | "Setup";
@@ -144,8 +133,8 @@ function BigNumber({ value, unit }: { value: React.ReactNode; unit?: string }) {
 
 // ── OEE gauge ─────────────────────────────────────────────────────────────────
 
-function OeeGauge() {
-  const data = [{ value: OEE, fill: "url(#oeeGrad)" }];
+function OeeGauge({ value }: { value: number }) {
+  const data = [{ value, fill: "url(#oeeGrad)" }];
   return (
     <div className="relative w-52 h-32 mx-auto">
       <ResponsiveContainer width="100%" height={200}>
@@ -176,13 +165,10 @@ function OeeGauge() {
       </ResponsiveContainer>
       <div className="absolute inset-0 flex flex-col items-center justify-end pb-1 pointer-events-none">
         <span className="text-4xl font-extrabold text-gray-900 dark:text-zinc-50 leading-none">
-          {OEE}
+          {value.toFixed(1)}
         </span>
         <span className="text-sm text-gray-400 dark:text-zinc-500 font-medium">
           %
-        </span>
-        <span className="text-xs font-semibold text-green-600 dark:text-green-500 mt-1">
-          ▲ +{OEE_DELTA}%
         </span>
       </div>
     </div>
@@ -193,12 +179,10 @@ function OeeGauge() {
 
 function DowntimeModal({
   segment,
-  machineId,
   onClose,
   onLogged,
 }: {
   segment: { start: string; end: string };
-  machineId: string;
   onClose: () => void;
   onLogged: () => void;
 }) {
@@ -209,7 +193,6 @@ function DowntimeModal({
 
   const submit = () => {
     if (!reason) return;
-    logDowntimeEntry(machineId, reason);
     onLogged();
     onClose();
   };
@@ -236,20 +219,17 @@ function DowntimeModal({
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {DOWNTIME_REASONS.map((r) => (
+          {ALL_REASONS.map((r) => (
             <button
               key={r}
-              onClick={() => {
-                setSelected(r);
-                setCustom("");
-              }}
+              onClick={() => { setSelected(r); setCustom(""); }}
               className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
                 selected === r && !custom
                   ? "border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400"
                   : "border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-zinc-300 hover:border-blue-400"
               }`}
             >
-              {r}
+              {REASON_LABEL[r]}
             </button>
           ))}
         </div>
@@ -304,26 +284,36 @@ export default function MachinePage() {
   const [error, setError] = useState("");
   const [dtRefreshKey, setDtRefreshKey] = useState(0);
   const [dtPeriod, setDtPeriod] = useState<DtPeriod>(DT_PERIODS[0]);
+  const [dtFilter, setDtFilter] = useState("");
   const [timelineModal, setTimelineModal] = useState<{
     start: string;
     end: string;
   } | null>(null);
   const { machineStates, liveKw } = useWebSocket();
   const [costPeriod, setCostPeriod] = useState<CostPeriod>(COST_PERIODS[0]);
+  const [metrics, setMetrics] = useState<{
+    utilization: number | null;
+    availability: number | null;
+    cuttingHours: number | null;
+    cuttingPct: number | null;
+    cycles: number | null;
+    downtimeHours: number | null;
+    plannedHours: number | null;
+    unplannedHours: number | null;
+  }>({
+    utilization: null, availability: null, cuttingHours: null,
+    cuttingPct: null, cycles: null, downtimeHours: null,
+    plannedHours: null, unplannedHours: null,
+  });
+  const [dtStats, setDtStats] = useState<DowntimeStats | null>(null);
   const { search } = useLocation();
   const machineId = new URLSearchParams(search).get("machineId") || "";
 
   const wsState = machineStates[machineId];
   const isRunning = wsState?.state?.toLowerCase() === "on";
 
-  const currentState =
-    wsState?.health?.toLowerCase() === "healthy"
-      ? "normal"
-      : wsState?.health?.toLowerCase() === "stale"
-        ? "unplanned downtime"
-        : wsState?.health?.toLowerCase() === "disconnected"
-          ? "alarm"
-          : "planned downtime";
+  const currentState: "on" | "idle" | "in maintenance" =
+    wsState?.state === "ON" && wsState?.health === "HEALTHY" ? "on" : "idle";
 
   const livePower   = liveKw[machineId] || 0;
   const costPerHour = livePower * ENERGY_RATE;
@@ -351,24 +341,54 @@ export default function MachinePage() {
     });
   }, [machineId]);
 
+  useEffect(() => {
+    if (!machineId) return;
+    const p = toPeriod(dtPeriod.hours);
+    Promise.allSettled([
+      fetchUtilization(machineId, p),
+      fetchAvailability(machineId, p),
+      fetchCutting(machineId, p),
+      fetchCycles(machineId, p),
+      fetchDowntimeHours(machineId, p),
+      fetchPlannedUnplanned(machineId, p),
+      fetchDowntimeStats(machineId, p),
+    ]).then(([util, avail, cut, cyc, dth, pu, dts]) => {
+      setMetrics({
+        utilization:    util.status  === "fulfilled" ? util.value.utilizationPercentage   : null,
+        availability:   avail.status === "fulfilled" ? avail.value.availabilityPercentage : null,
+        cuttingHours:   cut.status   === "fulfilled" ? cut.value.cuttingHours             : null,
+        cuttingPct:     cut.status   === "fulfilled" ? cut.value.cuttingPercentage         : null,
+        cycles:         cyc.status   === "fulfilled" ? cyc.value.cycles                   : null,
+        downtimeHours:  dth.status   === "fulfilled" ? dth.value.downtimeHours            : null,
+        plannedHours:   pu.status    === "fulfilled" ? pu.value.plannedHours              : null,
+        unplannedHours: pu.status    === "fulfilled" ? pu.value.unplannedHours            : null,
+      });
+      setDtStats(dts.status === "fulfilled" ? dts.value : null);
+    });
+  }, [machineId, dtPeriod.hours]);
+
+  const oeeValue = metrics.availability !== null && metrics.utilization !== null
+    ? +(metrics.availability * metrics.utilization / 100).toFixed(1)
+    : null;
+
+  const cycleTimeS = metrics.cuttingHours && metrics.cycles && metrics.cycles > 0
+    ? +((metrics.cuttingHours * 3600) / metrics.cycles).toFixed(1)
+    : null;
+
+  const downtimeCauses = dtStats?.reasonCounts
+    ? (Object.entries(dtStats.reasonCounts) as [DowntimeReason, number][])
+        .filter(([, count]) => count > 0)
+        .map(([reason, count]) => ({
+          reason,
+          count,
+          pct: dtStats.total > 0 ? Math.round((count / dtStats.total) * 100) : 0,
+        }))
+        .sort((a, b) => b.count - a.count)
+    : [];
+
   const handleExport = () => {
     const machineName = machine?.name ?? machineId;
     const date = new Date().toLocaleDateString();
-
-    const dtEntries: {
-      reason: string;
-      loggedAt: string;
-      escalation?: { level: string; note: string };
-    }[] = (() => {
-      try {
-        const all = JSON.parse(
-          localStorage.getItem("predictech_downtime") || "{}",
-        );
-        return Array.isArray(all[machineId]) ? all[machineId] : [];
-      } catch {
-        return [];
-      }
-    })();
 
     const rows: (string | number)[][] = [
       ["predicTech — Machine Export"],
@@ -376,29 +396,16 @@ export default function MachinePage() {
       ["Date", date],
       [],
       ["KPI", "Value"],
-      ["OEE", `${OEE}%`],
-      ["Availability", `${AVAILABILITY}%`],
-      ["Performance", `${PERFORMANCE}%`],
-      ["Quality", `${QUALITY}%`],
-      ["Parts Produced", `${PARTS_PRODUCED} / ${PARTS_TARGET}`],
-      ["Cycle Time", `${CYCLE_TIME_S}s`],
+      ["OEE (computed)",  oeeValue        !== null ? `${oeeValue}%`                        : "—"],
+      ["Availability",    metrics.availability  !== null ? `${metrics.availability.toFixed(1)}%`  : "—"],
+      ["Utilization",     metrics.utilization   !== null ? `${metrics.utilization.toFixed(1)}%`   : "—"],
+      ["Cycles",          metrics.cycles        !== null ? metrics.cycles.toString()               : "—"],
+      ["Cycle Time",      cycleTimeS            !== null ? `${cycleTimeS}s`                        : "—"],
+      ["Downtime (h)",    metrics.downtimeHours !== null ? metrics.downtimeHours.toFixed(2)        : "—"],
       [],
       ["DOWNTIME CAUSES"],
-      ["Reason", "Minutes", "Share"],
-      ...DOWNTIME_CAUSES.map(({ name, minutes, pct }) => [
-        name,
-        minutes,
-        `${pct}%`,
-      ]),
-      [],
-      ["DOWNTIME LOG"],
-      ["Reason", "Logged At", "Escalated To", "Escalation Note"],
-      ...dtEntries.map((e) => [
-        e.reason,
-        new Date(e.loggedAt).toLocaleString(),
-        e.escalation?.level ?? "",
-        e.escalation?.note ?? "",
-      ]),
+      ["Reason", "Events", "Share"],
+      ...downtimeCauses.map(({ reason, count, pct }) => [REASON_LABEL[reason], count, `${pct}%`]),
     ];
 
     downloadCsv(
@@ -454,19 +461,19 @@ export default function MachinePage() {
         <div className="flex flex-col gap-4">
           <Card>
             <Label>Overall OEE</Label>
-            <OeeGauge />
+            <OeeGauge value={oeeValue ?? 0} />
             <div className="flex justify-between mt-5">
               {[
-                { label: "Availability", value: AVAILABILITY },
-                { label: "Performance", value: PERFORMANCE },
-                { label: "Quality", value: QUALITY },
+                { label: "Availability", value: metrics.availability },
+                { label: "Utilization",  value: metrics.utilization  },
+                { label: "Cutting",      value: metrics.cuttingPct   },
               ].map(({ label, value }) => (
                 <div
                   key={label}
                   className="flex flex-col items-center flex-1 text-center"
                 >
                   <span className="text-sm font-bold text-green-600 dark:text-green-500">
-                    {value}%
+                    {value !== null ? `${value.toFixed(1)}%` : "—"}
                   </span>
                   <span className="text-[10px] text-gray-400 dark:text-zinc-500 mt-0.5">
                     {label}
@@ -477,48 +484,20 @@ export default function MachinePage() {
           </Card>
 
           <Card>
-            <Label>Parts Produced</Label>
-            <BigNumber value={PARTS_PRODUCED} unit={`/${PARTS_TARGET}`} />
-            <div className="mt-4 h-1.5 rounded-full bg-gray-100 dark:bg-zinc-800 overflow-hidden">
-              <div
-                className="h-full rounded-full bg-green-500"
-                style={{ width: `${(PARTS_PRODUCED / PARTS_TARGET) * 100}%` }}
-              />
-            </div>
-            <p className="text-xs text-gray-400 dark:text-zinc-500 text-right mt-1.5">
-              {((PARTS_PRODUCED / PARTS_TARGET) * 100).toFixed(1)}%
+            <Label>Cycles</Label>
+            <BigNumber value={metrics.cycles ?? "—"} unit="cycles" />
+            <p className="text-xs text-gray-400 dark:text-zinc-500 text-right mt-2">
+              in {dtPeriod.label}
             </p>
           </Card>
 
           <Card>
             <Label>Cycle Time</Label>
-            <div className="flex items-end justify-between">
-              <BigNumber value={CYCLE_TIME_S} unit="s" />
-              <div className="w-24 h-10">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={CYCLE_TREND}>
-                    <Line
-                      type="monotone"
-                      dataKey="v"
-                      stroke="#22c55e"
-                      strokeWidth={2}
-                      dot={false}
-                      isAnimationActive={false}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        fontSize: 11,
-                        borderRadius: 8,
-                        border: "1px solid #e5e7eb",
-                      }}
-                      formatter={(v: number) => [`${v}s`, "Cycle"]}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-            <p className="text-xs text-green-600 dark:text-green-500 font-semibold mt-2">
-              Target: {CYCLE_TARGET_S}s ✓
+            <BigNumber value={cycleTimeS ?? "—"} unit={cycleTimeS !== null ? "s" : undefined} />
+            <p className="text-xs text-gray-400 dark:text-zinc-500 font-medium mt-2">
+              {metrics.cuttingHours !== null
+                ? `${metrics.cuttingHours.toFixed(1)} h cutting · ${metrics.cycles ?? "—"} cycles`
+                : "No data for period"}
             </p>
           </Card>
 
@@ -659,8 +638,15 @@ export default function MachinePage() {
                 ))}
               </div>
             </div>
+            <input
+              type="text"
+              value={dtFilter}
+              onChange={(e) => setDtFilter(e.target.value)}
+              placeholder="Filter causes…"
+              className="w-full text-xs rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 px-2.5 py-1.5 mb-3 text-gray-800 dark:text-zinc-200 placeholder:text-gray-400 dark:placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
             <div className="flex flex-col gap-3">
-              {DOWNTIME_CAUSES.map(({ name, minutes, pct, color }) => {
+              {DOWNTIME_CAUSES.filter((c) => c.name.toLowerCase().includes(dtFilter.toLowerCase())).map(({ name, minutes, pct, color }) => {
                 const scaledMin = Math.round(minutes * (dtPeriod.hours / 24));
                 return (
                   <div key={name} className="flex items-center gap-3">
@@ -710,7 +696,6 @@ export default function MachinePage() {
       {timelineModal && (
         <DowntimeModal
           segment={timelineModal}
-          machineId={machineId}
           onClose={() => setTimelineModal(null)}
           onLogged={() => setDtRefreshKey((k) => k + 1)}
         />

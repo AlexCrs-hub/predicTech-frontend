@@ -1,140 +1,129 @@
-import { useState, useEffect } from "react";
-import { DOWNTIME_REASONS } from "@/lib/utils/machineSimulation";
-import { EscalationLevel } from "@/context/NotificationContext";
-
-// ── types ─────────────────────────────────────────────────────────────────────
-
-type Escalation = {
-  level: EscalationLevel;
-  note: string;
-  escalatedAt: string;
-};
-
-type DowntimeEntry = {
-  reason: string;
-  loggedAt: string;
-  escalation?: Escalation;
-};
-
-// ── storage ───────────────────────────────────────────────────────────────────
-
-const STORAGE_KEY = "predictech_downtime";
-
-function load(machineId: string): DowntimeEntry[] {
-  try {
-    const all = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
-    return Array.isArray(all[machineId]) ? all[machineId] : [];
-  } catch {
-    return [];
-  }
-}
-
-function save(machineId: string, entries: DowntimeEntry[]) {
-  try {
-    const all = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
-    all[machineId] = entries;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
-  } catch {}
-}
-
-// ── escalation badges ─────────────────────────────────────────────────────────
-
-const ESCALATION_LABEL: Record<EscalationLevel, string> = {
-  supervisor: "Supervisor",
-  manager: "Manager",
-  director: "Director",
-};
-
-const ESCALATION_COLOR: Record<EscalationLevel, string> = {
-  supervisor: "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 border-yellow-300 dark:border-yellow-700",
-  manager:    "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 border-orange-300 dark:border-orange-700",
-  director:   "bg-red-100    dark:bg-red-900/30    text-red-700    dark:text-red-400    border-red-300    dark:border-red-700",
-};
+import { useState, useEffect, useCallback } from "react";
+import {
+  fetchUnresolvedDowntime,
+  recordDowntimeReason,
+  DowntimeRecord,
+  DowntimeReason,
+  DowntimeType,
+  REASON_LABEL,
+  REASON_COLOR,
+  ALL_REASONS,
+} from "@/lib/api/downtimeRecordsApi";
+import { toPeriod } from "@/lib/api/metricsApi";
 
 // ── entry row ─────────────────────────────────────────────────────────────────
 
-function EntryRow({
-  entry,
-  onEscalate,
-}: {
-  entry: DowntimeEntry;
-  onEscalate: (e: Escalation) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [note, setNote] = useState("");
+function duration(start: string, end: string | null): string {
+  const ms = (end ? new Date(end) : new Date()).getTime() - new Date(start).getTime();
+  const m = Math.floor(ms / 60000);
+  if (m < 60) return `${m} min`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+}
 
-  const confirm = (level: EscalationLevel) => {
-    onEscalate({ level, note, escalatedAt: new Date().toISOString() });
-    setOpen(false);
-    setNote("");
+function EntryRow({
+  record,
+  onResolved,
+}: {
+  record: DowntimeRecord;
+  onResolved: () => void;
+}) {
+  const [reason, setReason]   = useState<DowntimeReason | "">("");
+  const [type, setType]       = useState<DowntimeType>("unplanned");
+  const [saving, setSaving]   = useState(false);
+  const [open, setOpen]       = useState(!record.reasonRecorded);
+
+  const submit = async () => {
+    if (!reason) return;
+    setSaving(true);
+    try {
+      await recordDowntimeReason(record._id, reason as DowntimeReason, type);
+      onResolved();
+    } catch {
+      setSaving(false);
+    }
   };
+
+  const startTime = new Date(record.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const dur = duration(record.startedAt, record.resolvedAt);
 
   return (
     <div className="flex flex-col gap-1.5 px-3 py-2 rounded-lg bg-gray-50 dark:bg-zinc-800/60 border border-gray-100 dark:border-zinc-800">
       {/* main row */}
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs text-gray-800 dark:text-zinc-200 font-medium truncate">
-          {entry.reason}
-        </span>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          {record.reasonRecorded && record.reason ? (
+            <span
+              className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+              style={{ backgroundColor: `${REASON_COLOR[record.reason]}20`, color: REASON_COLOR[record.reason] }}
+            >
+              {REASON_LABEL[record.reason]}
+            </span>
+          ) : (
+            <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800">
+              Needs reason
+            </span>
+          )}
           <span className="text-[10px] text-gray-400 dark:text-zinc-500">
-            {new Date(entry.loggedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            {record.downtimeType && (
+              <span className="mr-1 capitalize">{record.downtimeType}</span>
+            )}
+            {dur}
           </span>
-          {!entry.escalation && (
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-[10px] text-gray-400 dark:text-zinc-500">{startTime}</span>
+          {!record.reasonRecorded && (
             <button
               onClick={() => setOpen((o) => !o)}
-              className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-gray-300 dark:border-zinc-600 text-gray-500 dark:text-zinc-400 hover:border-orange-400 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
+              className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-gray-300 dark:border-zinc-600 text-gray-500 dark:text-zinc-400 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
             >
-              Escalate ↑
+              {open ? "Cancel" : "Log ↓"}
             </button>
           )}
         </div>
       </div>
 
-      {/* escalation badge */}
-      {entry.escalation && (
-        <div className="flex items-center gap-1.5">
-          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${ESCALATION_COLOR[entry.escalation.level]}`}>
-            ↑ {ESCALATION_LABEL[entry.escalation.level]}
-          </span>
-          {entry.escalation.note && (
-            <span className="text-[10px] text-gray-400 dark:text-zinc-500 truncate">
-              "{entry.escalation.note}"
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* inline escalation picker */}
-      {open && (
+      {/* reason form */}
+      {open && !record.reasonRecorded && (
         <div className="flex flex-col gap-2 pt-1 border-t border-gray-200 dark:border-zinc-700">
-          <p className="text-[10px] text-gray-500 dark:text-zinc-400 font-medium uppercase tracking-wide">
-            Escalate to
-          </p>
-          <div className="flex gap-1.5">
-            {(["supervisor", "manager", "director"] as EscalationLevel[]).map((lvl) => (
+          <div className="flex flex-wrap gap-1">
+            {ALL_REASONS.map((r) => (
               <button
-                key={lvl}
-                onClick={() => confirm(lvl)}
-                className="flex-1 text-[10px] font-semibold py-1 rounded-md border border-gray-300 dark:border-zinc-600 text-gray-600 dark:text-zinc-300 hover:bg-orange-50 dark:hover:bg-orange-900/20 hover:border-orange-400 hover:text-orange-600 dark:hover:text-orange-400 capitalize transition-colors"
+                key={r}
+                onClick={() => setReason(r)}
+                className="text-[10px] px-2 py-0.5 rounded-full border transition-colors"
+                style={reason === r
+                  ? { backgroundColor: `${REASON_COLOR[r]}20`, borderColor: REASON_COLOR[r], color: REASON_COLOR[r] }
+                  : { borderColor: "#d1d5db", color: "#6b7280" }}
               >
-                {ESCALATION_LABEL[lvl]}
+                {REASON_LABEL[r]}
               </button>
             ))}
           </div>
-          <input
-            type="text"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="Note (optional)"
-            className="text-xs rounded-md border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-2 py-1 text-gray-800 dark:text-zinc-200 placeholder:text-gray-400 dark:placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-orange-400"
-          />
-          <button
-            onClick={() => setOpen(false)}
-            className="text-[10px] text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 self-end"
-          >
-            Cancel
-          </button>
+          <div className="flex gap-1.5 items-center">
+            <div className="flex rounded-md border border-gray-200 dark:border-zinc-700 overflow-hidden text-[10px]">
+              {(["planned", "unplanned"] as DowntimeType[]).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setType(t)}
+                  className={`px-2 py-1 capitalize transition-colors ${
+                    type === t
+                      ? "bg-gray-900 dark:bg-zinc-100 text-white dark:text-zinc-900 font-semibold"
+                      : "bg-white dark:bg-zinc-900 text-gray-500 dark:text-zinc-400"
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+            <button
+              disabled={!reason || saving}
+              onClick={submit}
+              className="flex-1 text-[10px] font-semibold py-1 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -154,76 +143,64 @@ export default function DowntimeLog({
   refreshKey?: number;
   periodHours?: number;
 }) {
-  const [entries, setEntries] = useState<DowntimeEntry[]>(() => load(machineId));
+  const [records, setRecords] = useState<DowntimeRecord[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState(false);
 
-  useEffect(() => {
-    setEntries(load(machineId));
-  }, [machineId, refreshKey]);
+  const load = useCallback(async () => {
+    if (!machineId) return;
+    setLoading(true);
+    setError(false);
+    try {
+      const data = await fetchUnresolvedDowntime(machineId);
+      // filter by period if provided
+      const cutoff = periodHours
+        ? Date.now() - periodHours * 60 * 60 * 1000
+        : 0;
+      setRecords(
+        data
+          .filter((r) => !periodHours || new Date(r.startedAt).getTime() >= cutoff)
+          .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
+      );
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, [machineId, periodHours]);
 
-  const log = (reason: string) => {
-    const entry: DowntimeEntry = { reason, loggedAt: new Date().toISOString() };
-    const updated = [entry, ...entries].slice(0, 20);
-    setEntries(updated);
-    save(machineId, updated);
-  };
+  useEffect(() => { load(); }, [load, refreshKey]);
 
-  const escalate = (index: number, escalation: Escalation) => {
-    const updated = entries.map((e, i) => (i === index ? { ...e, escalation } : e));
-    setEntries(updated);
-    save(machineId, updated);
-  };
-
-  const isDown =
-    currentState === "unplanned downtime" ||
-    currentState === "planned downtime" ||
-    currentState === "alarm";
-
-  const visibleEntries = periodHours
-    ? entries.filter((e) => {
-        const cutoff = Date.now() - periodHours * 60 * 60 * 1000;
-        return new Date(e.loggedAt).getTime() >= cutoff;
-      })
-    : entries;
+  const unresolvedCount = records.filter((r) => !r.reasonRecorded).length;
 
   return (
     <div className="w-full flex flex-col gap-3">
-      <span className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">
-        Downtime Log
-      </span>
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">
+          Downtime Records
+        </span>
+        {unresolvedCount > 0 && (
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-700">
+            {unresolvedCount} unresolved
+          </span>
+        )}
+      </div>
 
-      {isDown && (
-        <div className="flex flex-col gap-2">
-          <p className="text-xs text-gray-500 dark:text-zinc-400">
-            Machine is down — log reason:
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {DOWNTIME_REASONS.map((r) => (
-              <button
-                key={r}
-                onClick={() => log(r)}
-                className="text-xs px-2.5 py-1 rounded-lg border border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-zinc-300 bg-white dark:bg-zinc-800 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-              >
-                {r}
-              </button>
-            ))}
-          </div>
-        </div>
+      {loading && <p className="text-xs text-gray-400 dark:text-zinc-500">Loading…</p>}
+      {error   && <p className="text-xs text-red-500">Failed to load records.</p>}
+
+      {!loading && !error && records.length === 0 && (
+        <p className="text-xs text-gray-400 dark:text-zinc-500">
+          No downtime records{periodHours ? " in selected period" : ""}.
+        </p>
       )}
 
-      {visibleEntries.length > 0 ? (
-        <div className="flex flex-col gap-1.5 max-h-64 overflow-y-auto pr-0.5">
-          {visibleEntries.map((e, i) => (
-            <EntryRow
-              key={`${e.loggedAt}-${i}`}
-              entry={e}
-              onEscalate={(esc) => escalate(entries.indexOf(e), esc)}
-            />
+      {!loading && records.length > 0 && (
+        <div className="flex flex-col gap-1.5 max-h-72 overflow-y-auto pr-0.5">
+          {records.map((r) => (
+            <EntryRow key={r._id} record={r} onResolved={load} />
           ))}
         </div>
-      ) : (
-        <p className="text-xs text-gray-400 dark:text-zinc-500">
-          {entries.length > 0 ? "No entries in selected period." : "No downtime entries recorded."}
-        </p>
       )}
     </div>
   );
