@@ -75,13 +75,6 @@ const TIMELINE_WITH_TIMES = (() => {
   });
 })();
 
-const DOWNTIME_CAUSES = [
-  { name: "Tool change", minutes: 18, pct: 38, color: "#ef4444" },
-  { name: "Material wait", minutes: 12, pct: 25, color: "#f97316" },
-  { name: "Micro-stops", minutes: 9, pct: 19, color: "#eab308" },
-  { name: "Setup", minutes: 5, pct: 11, color: "#60a5fa" },
-  { name: "Other", minutes: 3, pct: 6, color: "#6b7280" },
-];
 
 const LEGEND_ITEMS = [
   { label: "Running", color: "#22c55e" },
@@ -367,11 +360,11 @@ export default function MachinePage() {
     });
   }, [machineId, dtPeriod.hours]);
 
-  const oeeValue = metrics.availability !== null && metrics.utilization !== null
+  const oeeValue = metrics.availability != null && metrics.utilization != null
     ? +(metrics.availability * metrics.utilization / 100).toFixed(1)
     : null;
 
-  const cycleTimeS = metrics.cuttingHours && metrics.cycles && metrics.cycles > 0
+  const cycleTimeS = metrics.cuttingHours != null && metrics.cycles != null && metrics.cycles > 0
     ? +((metrics.cuttingHours * 3600) / metrics.cycles).toFixed(1)
     : null;
 
@@ -397,11 +390,11 @@ export default function MachinePage() {
       [],
       ["KPI", "Value"],
       ["OEE (computed)",  oeeValue        !== null ? `${oeeValue}%`                        : "—"],
-      ["Availability",    metrics.availability  !== null ? `${metrics.availability.toFixed(1)}%`  : "—"],
-      ["Utilization",     metrics.utilization   !== null ? `${metrics.utilization.toFixed(1)}%`   : "—"],
+      ["Availability",    metrics.availability  != null ? `${metrics.availability.toFixed(1)}%`  : "—"],
+      ["Utilization",     metrics.utilization   != null ? `${metrics.utilization.toFixed(1)}%`   : "—"],
       ["Cycles",          metrics.cycles        !== null ? metrics.cycles.toString()               : "—"],
       ["Cycle Time",      cycleTimeS            !== null ? `${cycleTimeS}s`                        : "—"],
-      ["Downtime (h)",    metrics.downtimeHours !== null ? metrics.downtimeHours.toFixed(2)        : "—"],
+      ["Downtime (h)",    metrics.downtimeHours != null ? metrics.downtimeHours.toFixed(2)        : "—"],
       [],
       ["DOWNTIME CAUSES"],
       ["Reason", "Events", "Share"],
@@ -473,7 +466,7 @@ export default function MachinePage() {
                   className="flex flex-col items-center flex-1 text-center"
                 >
                   <span className="text-sm font-bold text-green-600 dark:text-green-500">
-                    {value !== null ? `${value.toFixed(1)}%` : "—"}
+                    {value != null ? `${(value as number).toFixed(1)}%` : "—"}
                   </span>
                   <span className="text-[10px] text-gray-400 dark:text-zinc-500 mt-0.5">
                     {label}
@@ -495,7 +488,7 @@ export default function MachinePage() {
             <Label>Cycle Time</Label>
             <BigNumber value={cycleTimeS ?? "—"} unit={cycleTimeS !== null ? "s" : undefined} />
             <p className="text-xs text-gray-400 dark:text-zinc-500 font-medium mt-2">
-              {metrics.cuttingHours !== null
+              {metrics.cuttingHours != null
                 ? `${metrics.cuttingHours.toFixed(1)} h cutting · ${metrics.cycles ?? "—"} cycles`
                 : "No data for period"}
             </p>
@@ -646,28 +639,33 @@ export default function MachinePage() {
               className="w-full text-xs rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 px-2.5 py-1.5 mb-3 text-gray-800 dark:text-zinc-200 placeholder:text-gray-400 dark:placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
             <div className="flex flex-col gap-3">
-              {DOWNTIME_CAUSES.filter((c) => c.name.toLowerCase().includes(dtFilter.toLowerCase())).map(({ name, minutes, pct, color }) => {
-                const scaledMin = Math.round(minutes * (dtPeriod.hours / 24));
-                return (
-                  <div key={name} className="flex items-center gap-3">
-                    <span className="w-28 text-sm text-gray-600 dark:text-zinc-400 shrink-0">
-                      {name}
-                    </span>
-                    <div className="flex-1 h-4 rounded-full bg-gray-100 dark:bg-zinc-800 overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all duration-300"
-                        style={{ width: `${pct}%`, backgroundColor: color }}
-                      />
+              {downtimeCauses.length === 0 ? (
+                <p className="text-xs text-gray-400 dark:text-zinc-500">
+                  No downtime data for this period.
+                </p>
+              ) : (
+                downtimeCauses
+                  .filter((c) => REASON_LABEL[c.reason].toLowerCase().includes(dtFilter.toLowerCase()))
+                  .map(({ reason, count, pct }) => (
+                    <div key={reason} className="flex items-center gap-3">
+                      <span className="w-28 text-sm text-gray-600 dark:text-zinc-400 shrink-0">
+                        {REASON_LABEL[reason]}
+                      </span>
+                      <div className="flex-1 h-4 rounded-full bg-gray-100 dark:bg-zinc-800 overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-300"
+                          style={{ width: `${pct}%`, backgroundColor: REASON_COLOR[reason] }}
+                        />
+                      </div>
+                      <span className="text-sm font-semibold text-gray-800 dark:text-zinc-200 w-16 text-right shrink-0 tabular-nums">
+                        {count} events
+                      </span>
+                      <span className="text-xs text-gray-400 dark:text-zinc-500 w-8 text-right shrink-0 tabular-nums">
+                        {pct}%
+                      </span>
                     </div>
-                    <span className="text-sm font-semibold text-gray-800 dark:text-zinc-200 w-16 text-right shrink-0 tabular-nums">
-                      {scaledMin} min
-                    </span>
-                    <span className="text-xs text-gray-400 dark:text-zinc-500 w-8 text-right shrink-0 tabular-nums">
-                      {pct}%
-                    </span>
-                  </div>
-                );
-              })}
+                  ))
+              )}
             </div>
           </Card>
 
