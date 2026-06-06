@@ -10,11 +10,13 @@ import {
   SENSOR_THRESHOLD,
   logDowntimeEntry,
 } from "@/lib/utils/machineSimulation";
+import { startWorkInterval, stopWorkInterval } from "@/lib/api/workIntervalApi";
 
 type StateOverride = { state: Machine["currentState"]; since?: number };
 
 export default function ActiveMachineList() {
   const [machines, setMachines]     = useState<Machine[]>([]);
+  const [fetchStatus, setFetchStatus] = useState<"loading" | "ok" | "auth" | "empty" | "error">("loading");
   const [simValues, setSimValues]   = useState<Record<string, number>>({});
   const [alertQueue, setAlertQueue] = useState<BreachAlert[]>([]);
   const [overrides, setOverrides]   = useState<Record<string, StateOverride>>({});
@@ -25,8 +27,16 @@ export default function ActiveMachineList() {
 
   useEffect(() => {
     fetchAllMachines()
-      .then((res) => setMachines(Array.isArray(res?.machines) ? res.machines : []))
-      .catch(() => setMachines([]));
+      .then((res) => {
+        if (res?.message === "You need to Login") {
+          setFetchStatus("auth");
+          return;
+        }
+        const list = Array.isArray(res?.machines) ? res.machines : [];
+        setMachines(list);
+        setFetchStatus(list.length > 0 ? "ok" : "empty");
+      })
+      .catch(() => setFetchStatus("error"));
   }, []);
 
   // Sensor simulation — threshold breach detection only
@@ -50,6 +60,16 @@ export default function ActiveMachineList() {
       ...prev,
       [id]: { state, since: state === "in maintenance" ? Date.now() : undefined },
     }));
+  };
+
+  const handleStart = (id: string) => {
+    setMachineState(id, "on");
+    startWorkInterval(id).catch(() => {/* interval may already be active */});
+  };
+
+  const handleStop = (id: string) => {
+    setMachineState(id, "idle");
+    stopWorkInterval(id).catch(() => {/* no active interval */});
   };
 
   const deriveState = (machine: Machine): Machine["currentState"] => {
@@ -125,8 +145,8 @@ export default function ActiveMachineList() {
           currentState={machine.currentState}
           liveKw={liveKw[machine._id] || 0}
           maxPowerConsumption={machine.maxPowerConsumption}
-          onStart={()       => setMachineState(machine._id, "on")}
-          onStop={()        => setMachineState(machine._id, "idle")}
+          onStart={()       => handleStart(machine._id)}
+          onStop={()        => handleStop(machine._id)}
           onMaintenance={() => setMachineState(machine._id, "in maintenance")}
           maintenanceSince={overrides[machine._id]?.state === "in maintenance"
             ? overrides[machine._id].since : undefined}
@@ -182,8 +202,21 @@ export default function ActiveMachineList() {
         </section>
       )}
 
-      {machines.length === 0 && (
-        <p className="text-sm text-gray-400 dark:text-zinc-500">No machines found.</p>
+      {fetchStatus === "loading" && (
+        <p className="text-sm text-gray-400 dark:text-zinc-500 animate-pulse">Loading machines…</p>
+      )}
+      {fetchStatus === "auth" && (
+        <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-5 py-4 text-sm text-amber-700 dark:text-amber-400">
+          Session expired — please <a href="/login" className="underline font-semibold">log in again</a>.
+        </div>
+      )}
+      {fetchStatus === "error" && (
+        <div className="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-5 py-4 text-sm text-red-700 dark:text-red-400">
+          Could not reach the server. Make sure the backend is running on port 8081.
+        </div>
+      )}
+      {fetchStatus === "empty" && (
+        <p className="text-sm text-gray-400 dark:text-zinc-500">No machines found for this account.</p>
       )}
 
       {currentAlert && (

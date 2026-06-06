@@ -243,11 +243,28 @@ export default function OverviewPage() {
 
   return (
     <div className="w-full p-6 flex flex-col gap-6 bg-gray-50 dark:bg-zinc-950 min-h-screen">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-zinc-50">Overview</h1>
-        <Link to="/app/bigscreen" className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
-          Big screen →
-        </Link>
+        <div className="flex items-center gap-3">
+          <div className="flex rounded-md border border-gray-200 dark:border-zinc-700 overflow-hidden">
+            {PERIODS.map((p) => (
+              <button
+                key={p.label}
+                className={`px-3 py-1.5 text-sm transition-colors ${
+                  period.label === p.label
+                    ? "bg-gray-900 dark:bg-zinc-100 text-white dark:text-zinc-900 font-medium"
+                    : "bg-white dark:bg-zinc-900 text-gray-600 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800"
+                }`}
+                onClick={() => setPeriod(p)}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <Link to="/app/bigscreen" className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+            Big screen →
+          </Link>
+        </div>
       </div>
 
       {/* ── KPI tiles ── */}
@@ -285,7 +302,7 @@ export default function OverviewPage() {
           {/* Time breakdown chart */}
           <section className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <SectionHeading>Time breakdown</SectionHeading>
+              <SectionHeading>Time breakdown — {period.label}</SectionHeading>
               <div className="flex items-center gap-2 flex-wrap">
                 <ExportBtn onClick={exportTimeBreakdown} />
                 <select
@@ -298,21 +315,6 @@ export default function OverviewPage() {
                     <option key={m._id} value={m._id}>{m.name}</option>
                   ))}
                 </select>
-                <div className="flex rounded-md border border-gray-200 dark:border-zinc-700 overflow-hidden">
-                  {PERIODS.map((p) => (
-                    <button
-                      key={p.label}
-                      className={`px-3 py-1 text-sm transition-colors ${
-                        period.label === p.label
-                          ? "bg-gray-900 dark:bg-zinc-100 text-white dark:text-zinc-900 font-medium"
-                          : "bg-white dark:bg-zinc-900 text-gray-600 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800"
-                      }`}
-                      onClick={() => setPeriod(p)}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
               </div>
             </div>
             <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm p-4">
@@ -397,7 +399,7 @@ export default function OverviewPage() {
           {/* Downtime causes — bar chart */}
           <section className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
-              <SectionHeading>Top downtime causes</SectionHeading>
+              <SectionHeading>Top downtime causes — {period.label}</SectionHeading>
               <ExportBtn onClick={exportDowntimeCauses} />
             </div>
             <input
@@ -409,23 +411,26 @@ export default function OverviewPage() {
             />
             <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm p-5">
               <div className="flex flex-col gap-3">
-                {DOWNTIME_CAUSES.filter((c) => c.name.toLowerCase().includes(dtFilter.toLowerCase())).map(({ name, minutes, pct, color }) => (
-                  <div key={name} className="flex items-center gap-3">
-                    <span className="w-28 text-sm text-gray-600 dark:text-zinc-400 shrink-0">{name}</span>
-                    <div className="flex-1 h-4 rounded-full bg-gray-100 dark:bg-zinc-800 overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all duration-500"
-                        style={{ width: `${pct}%`, backgroundColor: color }}
-                      />
+                {DOWNTIME_CAUSES.filter((c) => c.name.toLowerCase().includes(dtFilter.toLowerCase())).map(({ name, minutes, pct, color }) => {
+                  const scaledMin = Math.round(minutes * (period.hours / 24));
+                  return (
+                    <div key={name} className="flex items-center gap-3">
+                      <span className="w-28 text-sm text-gray-600 dark:text-zinc-400 shrink-0">{name}</span>
+                      <div className="flex-1 h-4 rounded-full bg-gray-100 dark:bg-zinc-800 overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-500"
+                          style={{ width: `${pct}%`, backgroundColor: color }}
+                        />
+                      </div>
+                      <span className="text-sm font-semibold text-gray-800 dark:text-zinc-200 w-14 text-right shrink-0 tabular-nums">
+                        {scaledMin} min
+                      </span>
+                      <span className="text-xs text-gray-400 dark:text-zinc-500 w-8 text-right shrink-0 tabular-nums">
+                        {pct}%
+                      </span>
                     </div>
-                    <span className="text-sm font-semibold text-gray-800 dark:text-zinc-200 w-14 text-right shrink-0 tabular-nums">
-                      {minutes} min
-                    </span>
-                    <span className="text-xs text-gray-400 dark:text-zinc-500 w-8 text-right shrink-0 tabular-nums">
-                      {pct}%
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </section>
