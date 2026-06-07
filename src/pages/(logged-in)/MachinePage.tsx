@@ -4,8 +4,6 @@ import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { Machine } from "@/lib/components/machineList/types";
 import {
-  RadialBarChart,
-  RadialBar,
   ResponsiveContainer,
   LineChart,
   Line,
@@ -17,8 +15,8 @@ import { getMachineUtilization } from "@/lib/utils/machineSimulation";
 import { downloadCsv } from "@/lib/utils/exportCsv";
 import InteractiveTimeline from "@/lib/components/machine/InteractiveTimeline";
 import {
-  fetchUtilization, fetchAvailability, fetchCutting,
-  fetchCycles, fetchDowntimeHours, fetchPlannedUnplanned,
+  fetchUtilization, fetchCutting,
+  fetchCycles, fetchDowntimeHours,
   toPeriod,
 } from "@/lib/api/metricsApi";
 import {
@@ -124,45 +122,44 @@ function BigNumber({ value, unit }: { value: React.ReactNode; unit?: string }) {
   );
 }
 
-// ── OEE gauge ─────────────────────────────────────────────────────────────────
+// ── OEE gauge (pure SVG) ──────────────────────────────────────────────────────
 
 function OeeGauge({ value }: { value: number }) {
-  const data = [{ value, fill: "url(#oeeGrad)" }];
+  const pct = Math.min(99.9, Math.max(0.1, value ?? 0));
+  const r = 68, cx = 100, cy = 88, sw = 14;
+
+  const pt = (deg: number) => ({
+    x: +(cx + r * Math.cos((deg * Math.PI) / 180)).toFixed(2),
+    y: +(cy - r * Math.sin((deg * Math.PI) / 180)).toFixed(2),
+  });
+
+  const left  = pt(180);
+  const right = pt(0);
+  const fill  = pt(180 - pct * 1.8);
+
+  const bg   = `M ${left.x} ${left.y} A ${r} ${r} 0 0 1 ${right.x} ${right.y}`;
+  const arc  = `M ${left.x} ${left.y} A ${r} ${r} 0 0 1 ${fill.x} ${fill.y}`;
+
   return (
-    <div className="relative w-52 h-32 mx-auto">
-      <ResponsiveContainer width="100%" height={200}>
-        <RadialBarChart
-          cx="50%"
-          cy="85%"
-          innerRadius="70%"
-          outerRadius="100%"
-          startAngle={180}
-          endAngle={0}
-          data={data}
-          barSize={18}
-        >
+    <div className="flex flex-col items-center w-full">
+      <div className="relative w-[200px] h-[108px]">
+        <svg width="200" height="108" viewBox="0 0 200 108">
           <defs>
             <linearGradient id="oeeGrad" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="#ef4444" />
-              <stop offset="50%" stopColor="#eab308" />
+              <stop offset="0%"   stopColor="#ef4444" />
+              <stop offset="50%"  stopColor="#eab308" />
               <stop offset="100%" stopColor="#22c55e" />
             </linearGradient>
           </defs>
-          <RadialBar
-            dataKey="value"
-            cornerRadius={6}
-            background={{ fill: "transparent" }}
-            isAnimationActive={false}
-          />
-        </RadialBarChart>
-      </ResponsiveContainer>
-      <div className="absolute inset-0 flex flex-col items-center justify-end pb-1 pointer-events-none">
-        <span className="text-4xl font-extrabold text-gray-900 dark:text-zinc-50 leading-none">
-          {value.toFixed(1)}
-        </span>
-        <span className="text-sm text-gray-400 dark:text-zinc-500 font-medium">
-          %
-        </span>
+          <path d={bg}  fill="none" stroke="#e5e7eb"        strokeWidth={sw} strokeLinecap="round" className="dark:[stroke:#27272a]" />
+          <path d={arc} fill="none" stroke="url(#oeeGrad)"  strokeWidth={sw} strokeLinecap="round" />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-end pb-0.5 pointer-events-none">
+          <span className="text-4xl font-extrabold text-gray-900 dark:text-zinc-50 leading-none">
+            {value.toFixed(1)}
+          </span>
+          <span className="text-sm text-gray-400 dark:text-zinc-500 font-medium">%</span>
+        </div>
       </div>
     </div>
   );
@@ -301,6 +298,7 @@ export default function MachinePage() {
   const [dtStats, setDtStats] = useState<DowntimeStats | null>(null);
   const { search } = useLocation();
   const machineId = new URLSearchParams(search).get("machineId") || "";
+  const isDemo = machineId === "demo-cnc-001";
 
   const wsState = machineStates[machineId];
   const isRunning = wsState?.state?.toLowerCase() === "on";
@@ -308,7 +306,7 @@ export default function MachinePage() {
   const currentState: "on" | "idle" | "in maintenance" =
     wsState?.state === "ON" && wsState?.health === "HEALTHY" ? "on" : "idle";
 
-  const livePower   = liveKw[machineId] || 0;
+  const livePower   = isDemo ? 18.5 : (liveKw[machineId] || 0);
   const costPerHour = livePower * ENERGY_RATE;
   const costPerDay  = costPerHour * 24;
 
@@ -328,37 +326,48 @@ export default function MachinePage() {
   })();
 
   useEffect(() => {
+    if (isDemo) {
+      setMachine({ _id: "demo-cnc-001", name: "CNC Fibre Laser #1", liveKw: 18.5, maxPowerConsumption: 25, currentState: "on", status: "on" });
+      return;
+    }
     fetchMachineById(machineId).then((res) => {
       if (res.error) setError(res.error);
       else setMachine(res.machine || null);
     });
-  }, [machineId]);
+  }, [machineId, isDemo]);
 
   useEffect(() => {
     if (!machineId) return;
+    if (isDemo) {
+      setMetrics({ utilization: 78.5, availability: 91.2, cuttingHours: 5.4, cuttingPct: 62.0, cycles: 347, downtimeHours: 1.8, plannedHours: 0.8, unplannedHours: 1.0 });
+      setDtStats({ reasonCounts: { tool_change: 3, material_wait: 2, micro_stop: 1 }, typeCounts: { planned: 2, unplanned: 4 }, total: 6, period: "day", machineId });
+      return;
+    }
     const p = toPeriod(dtPeriod.hours);
     Promise.allSettled([
       fetchUtilization(machineId, p),
-      fetchAvailability(machineId, p),
       fetchCutting(machineId, p),
       fetchCycles(machineId, p),
       fetchDowntimeHours(machineId, p),
-      fetchPlannedUnplanned(machineId, p),
       fetchDowntimeStats(machineId, p),
-    ]).then(([util, avail, cut, cyc, dth, pu, dts]) => {
+    ]).then(([util, cut, cyc, dth, dts]) => {
+      const downtimeHours = dth.status === "fulfilled" ? dth.value.downtimeHours : null;
+      const availability  = downtimeHours !== null
+        ? +Math.max(0, 100 - (downtimeHours / dtPeriod.hours) * 100).toFixed(1)
+        : null;
       setMetrics({
-        utilization:    util.status  === "fulfilled" ? util.value.utilizationPercentage   : null,
-        availability:   avail.status === "fulfilled" ? avail.value.availabilityPercentage : null,
-        cuttingHours:   cut.status   === "fulfilled" ? cut.value.cuttingHours             : null,
-        cuttingPct:     cut.status   === "fulfilled" ? cut.value.cuttingPercentage         : null,
-        cycles:         cyc.status   === "fulfilled" ? cyc.value.cycles                   : null,
-        downtimeHours:  dth.status   === "fulfilled" ? dth.value.downtimeHours            : null,
-        plannedHours:   pu.status    === "fulfilled" ? pu.value.plannedHours              : null,
-        unplannedHours: pu.status    === "fulfilled" ? pu.value.unplannedHours            : null,
+        utilization:    util.status === "fulfilled" ? util.value.utilizationPercentage : null,
+        availability,
+        cuttingHours:   cut.status  === "fulfilled" ? cut.value.cuttingHours          : null,
+        cuttingPct:     cut.status  === "fulfilled" ? cut.value.cuttingPercentage      : null,
+        cycles:         cyc.status  === "fulfilled" ? cyc.value.cycles                : null,
+        downtimeHours,
+        plannedHours:   null,
+        unplannedHours: null,
       });
       setDtStats(dts.status === "fulfilled" ? dts.value : null);
     });
-  }, [machineId, dtPeriod.hours]);
+  }, [machineId, dtPeriod.hours, isDemo]);
 
   const oeeValue = metrics.availability != null && metrics.utilization != null
     ? +(metrics.availability * metrics.utilization / 100).toFixed(1)
