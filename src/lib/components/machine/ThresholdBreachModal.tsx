@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/lib/components/ui/button";
-import { DOWNTIME_REASONS } from "@/lib/utils/machineSimulation";
+import { ALL_REASONS, REASON_LABEL, DowntimeReason } from "@/lib/api/downtimeRecordsApi";
 
 export type BreachAlert = {
   machineId: string;
@@ -12,7 +12,7 @@ export type BreachAlert = {
 type Props = {
   alert: BreachAlert;
   queueLength: number;
-  onLogReason: (machineId: string, reason: string) => void;
+  onLogReason: (machineId: string, reason: DowntimeReason) => void;
   onCreateTicket: (machineId: string, comment: string) => void;
 };
 
@@ -20,7 +20,7 @@ export default function ThresholdBreachModal({ alert, queueLength, onLogReason, 
   const [mode, setMode] = useState<"idle" | "ticket">("idle");
   const [comment, setComment] = useState("");
 
-  const handleLogReason = (reason: string) => {
+  const handleLogReason = (reason: DowntimeReason) => {
     onLogReason(alert.machineId, reason);
     setMode("idle");
     setComment("");
@@ -66,9 +66,9 @@ export default function ThresholdBreachModal({ alert, queueLength, onLogReason, 
             <div className="flex flex-col gap-2">
               <p className="text-sm font-semibold">Select downtime reason:</p>
               <div className="flex flex-wrap gap-2">
-                {DOWNTIME_REASONS.map((r) => (
+                {ALL_REASONS.map((r) => (
                   <Button key={r} size="sm" variant="outline" className="text-xs h-7" onClick={() => handleLogReason(r)}>
-                    {r}
+                    {REASON_LABEL[r]}
                   </Button>
                 ))}
               </div>
@@ -84,19 +84,19 @@ export default function ThresholdBreachModal({ alert, queueLength, onLogReason, 
 
         {mode === "ticket" && (
           <div className="flex flex-col gap-3">
-            <p className="text-sm font-semibold">Dodaj komentarz do ticketu:</p>
+            <p className="text-sm font-semibold">Add a comment to the ticket:</p>
             <textarea
               className="w-full rounded-md border bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
               rows={3}
-              placeholder="Opisz problem…"
+              placeholder="Describe the issue…"
               value={comment}
               onChange={(e) => setComment(e.target.value)}
               autoFocus
             />
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setMode("idle")}>Wróć</Button>
+              <Button variant="outline" onClick={() => setMode("idle")}>Back</Button>
               <Button disabled={!comment.trim()} onClick={handleCreateTicket}>
-                Utwórz
+                Create
               </Button>
             </div>
           </div>

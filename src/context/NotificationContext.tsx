@@ -140,7 +140,23 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
   const updateReportStatus = useCallback(
     (id: string, status: ReportStatus, comment: string) => {
       setReports((prev) => {
-        const entry: StatusEntry = { status, comment, changedAt: new Date().toISOString() };
+        const report = prev.find((r) => r.id === id);
+
+        let finalComment = comment;
+        if (status === "fixed" && report) {
+          const inProgressEntry = [...(report.statusHistory ?? [])].reverse()
+            .find((e) => e.status === "in_progress");
+          if (inProgressEntry) {
+            const ms  = Date.now() - new Date(inProgressEntry.changedAt).getTime();
+            const min = Math.round(ms / 60000);
+            const dur = min < 60
+              ? `${min} min`
+              : `${Math.floor(min / 60)}h ${min % 60}m`;
+            finalComment = `${comment} · Maintenance duration: ${dur}`;
+          }
+        }
+
+        const entry: StatusEntry = { status, comment: finalComment, changedAt: new Date().toISOString() };
         const updated = prev.map((r) =>
           r.id !== id ? r : { ...r, status, statusHistory: [...(r.statusHistory ?? []), entry] },
         );

@@ -164,6 +164,40 @@ function KpiTile({
   );
 }
 
+// ── Insights ─────────────────────────────────────────────────────────────────
+type InsightType = "warning" | "good" | "info";
+type Insight = { text: string; type: InsightType };
+
+const INSIGHT_STYLE: Record<InsightType, { bar: string; dot: string; text: string }> = {
+  warning: { bar: "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800", dot: "bg-amber-400", text: "text-amber-700 dark:text-amber-400" },
+  good:    { bar: "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800",   dot: "bg-green-500",  text: "text-green-700 dark:text-green-400"  },
+  info:    { bar: "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800",       dot: "bg-blue-400",  text: "text-blue-700 dark:text-blue-400"    },
+};
+
+function InsightBar({ insights }: { insights: Insight[] }) {
+  if (insights.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-1.5 mt-1">
+      {insights.map((ins, i) => {
+        const s = INSIGHT_STYLE[ins.type];
+        return (
+          <div key={i} className={`flex items-start gap-2 rounded-lg border px-3 py-2 ${s.bar}`}>
+            <span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
+            <span className={`text-xs leading-snug ${s.text}`}>{ins.text}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Demo machines shown when API returns nothing ──────────────────────────────
+const DEMO_MACHINES: Machine[] = [
+  { _id: "demo-cnc-001", name: "CNC Fibre Laser #1", liveKw: 18.5, maxPowerConsumption: 25, currentState: "on", status: "on" },
+  { _id: "demo-cnc-002", name: "CNC Router #2",      liveKw: 12.1, maxPowerConsumption: 20, currentState: "on", status: "on" },
+  { _id: "demo-cnc-003", name: "Plasma Cutter #3",   liveKw: 0,    maxPowerConsumption: 30, currentState: "idle", status: "idle" },
+];
+
 // ── Page ─────────────────────────────────────────────────────────────────────
 export default function OverviewPage() {
   const [machines, setMachines] = useState<Machine[]>([]);
@@ -182,14 +216,17 @@ export default function OverviewPage() {
 
   const activeReports = reports.filter((r) => r.status !== "fixed");
 
-  const leaderboard = [...machines]
+  // Use demo machines as fallback when API returns empty
+  const effectiveMachines = machines.length > 0 ? machines : DEMO_MACHINES;
+
+  const leaderboard = [...effectiveMachines]
     .map((m) => ({ ...m, utilPct: getMachineUtilization(m._id).runtimePct }))
     .sort((a, b) => b.utilPct - a.utilPct);
 
   const sourceMachines =
     selectedMachine === "all"
-      ? machines
-      : machines.filter((m) => m._id === selectedMachine);
+      ? effectiveMachines
+      : effectiveMachines.filter((m) => m._id === selectedMachine);
 
   const chartData = STATUS_BARS.map(({ key, label, color }) => {
     const total = sourceMachines.reduce(
@@ -199,14 +236,19 @@ export default function OverviewPage() {
     return { name: label, value: +total.toFixed(1), color };
   });
 
-  // Power & cost KPIs
-  const totalKw = machines.length > 0
-    ? machines.reduce((sum, m) => sum + (liveKw[m._id] || 0), 0)
-    : 0;
+  // Power & cost KPIs — fall back to simulated values when WebSocket is silent
+  const wsKwTotal = machines.reduce((sum, m) => sum + (liveKw[m._id] || 0), 0);
+  const totalKw = wsKwTotal > 0
+    ? wsKwTotal
+    : effectiveMachines.reduce((sum, m) => {
+        if (m._id.startsWith("demo-")) return sum + m.liveKw;
+        const u = getMachineUtilization(m._id);
+        return sum + +(((u.runtimePct / 100) * (m.maxPowerConsumption ?? 10) * 0.75).toFixed(1));
+      }, 0);
   const hourlyCostEur = totalKw * ENERGY_RATE;
   const dailyCostEur  = hourlyCostEur * 24;
 
-  const costData = buildCostData(machines, costPeriod.days);
+  const costData = buildCostData(effectiveMachines, costPeriod.days);
   const totalCostInPeriod = costData.reduce((s, d) => s + d.cost, 0);
 
   // Export helpers
@@ -241,6 +283,65 @@ export default function OverviewPage() {
     ]);
   };
 
+  // ── Insights computation ──────────────────────────────────────────────────
+  const totalHours = Math.max(1, sourceMachines.length * period.hours);
+  const cuttingH   = chartData.find((d) => d.name === "Cutting")?.value      ?? 0;
+  const idleH      = chartData.find((d) => d.name === "Idle")?.value          ?? 0;
+  const unplannedH = chartData.find((d) => d.name === "Unplanned DT")?.value  ?? 0;
+  const plannedH   = chartData.find((d) => d.name === "Planned DT")?.value    ?? 0;
+  const cPct = (cuttingH   / totalHours) * 100;
+  const iPct = (idleH      / totalHours) * 100;
+  const uPct = (unplannedH / totalHours) * 100;
+
+  const timeInsights: Insight[] = [];
+  if (cPct > 55) timeInsights.push({ text: `Machines are actively cutting ${cPct.toFixed(0)}% of the period — excellent throughput`, type: "good" });
+  if (iPct > 25) timeInsights.push({ text: `Idle time is ${iPct.toFixed(0)}% of the period — consider optimizing shift scheduling`, type: "warning" });
+  if (uPct > 15) timeInsights.push({ text: `Unplanned downtime at ${uPct.toFixed(0)}% — preventive maintenance may reduce this`, type: "warning" });
+  if (unplannedH > plannedH * 2 && plannedH > 0) timeInsights.push({ text: `Unplanned downtime is more than twice the planned rate`, type: "warning" });
+  if (uPct < 5 && cPct > 45) timeInsights.push({ text: `Low unplanned downtime this period — operations are well under control`, type: "good" });
+
+  const leaderboardInsights: Insight[] = (() => {
+    if (leaderboard.length === 0) return [];
+    const ins: Insight[] = [];
+    const avg   = leaderboard.reduce((s, m) => s + m.utilPct, 0) / leaderboard.length;
+    const worst = leaderboard[leaderboard.length - 1];
+    const best  = leaderboard[0];
+    const spread = best.utilPct - worst.utilPct;
+
+    if (worst.utilPct < 40)
+      ins.push({ text: `${worst.name} has low utilization (${worst.utilPct}%) — consider rebalancing load`, type: "warning" });
+    else if (leaderboard.every((m) => m.utilPct >= 65))
+      ins.push({ text: `All machines above 65% utilization — fleet is operating efficiently`, type: "good" });
+
+    if (avg > 82)
+      ins.push({ text: `Fleet average utilization is ${avg.toFixed(0)}% — monitor for overloading`, type: "warning" });
+    else if (avg >= 60 && avg <= 82)
+      ins.push({ text: `Fleet average utilization is ${avg.toFixed(0)}% — healthy balance`, type: "good" });
+
+    if (spread > 35 && leaderboard.length > 1)
+      ins.push({ text: `${best.name} (${best.utilPct}%) vs ${worst.name} (${worst.utilPct}%) — large utilization gap, consider rebalancing`, type: "info" });
+
+    return ins;
+  })();
+
+  const downtimeInsights: Insight[] = (() => {
+    const ins: Insight[] = [];
+    const sorted = [...DOWNTIME_CAUSES].sort((a, b) => b.pct - a.pct);
+    if (sorted.length === 0) return ins;
+    const top = sorted[0];
+    if (top.pct > 35)
+      ins.push({ text: `"${top.name}" is the dominant downtime cause at ${top.pct}% — addressing it would have the highest impact`, type: "warning" });
+    const other = DOWNTIME_CAUSES.find((c) => c.name === "Other");
+    if (other && other.pct > 15)
+      ins.push({ text: `${other.pct}% of downtime is unclassified — log specific reasons to improve tracking`, type: "info" });
+    if (sorted.length >= 2) {
+      const topTwo = sorted[0].pct + sorted[1].pct;
+      if (topTwo > 60)
+        ins.push({ text: `"${sorted[0].name}" and "${sorted[1].name}" together account for ${topTwo}% of downtime`, type: "info" });
+    }
+    return ins;
+  })();
+
   return (
     <div className="w-full p-6 flex flex-col gap-6 bg-gray-50 dark:bg-zinc-950 min-h-screen">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -271,7 +372,7 @@ export default function OverviewPage() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <KpiTile
           label="Machines"
-          value={String(machines.length)}
+          value={String(effectiveMachines.length)}
           sub={`${activeReports.length} open ticket${activeReports.length !== 1 ? "s" : ""}`}
         />
         <KpiTile
@@ -311,7 +412,7 @@ export default function OverviewPage() {
                   onChange={(e) => setSelectedMachine(e.target.value)}
                 >
                   <option value="all">All machines</option>
-                  {machines.map((m) => (
+                  {effectiveMachines.map((m) => (
                     <option key={m._id} value={m._id}>{m.name}</option>
                   ))}
                 </select>
@@ -342,6 +443,7 @@ export default function OverviewPage() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
+            <InsightBar insights={timeInsights} />
           </section>
 
           {/* Utilization leaderboard */}
@@ -389,6 +491,7 @@ export default function OverviewPage() {
                   </tbody>
                 </table>
               </div>
+              <InsightBar insights={leaderboardInsights} />
             </section>
           )}
         </div>
@@ -433,6 +536,7 @@ export default function OverviewPage() {
                 })}
               </div>
             </div>
+            <InsightBar insights={downtimeInsights} />
           </section>
 
           {/* Maintenance Tickets */}
@@ -516,7 +620,7 @@ export default function OverviewPage() {
           </div>
         </div>
         <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm p-4">
-          {machines.length === 0 ? (
+          {effectiveMachines.length === 0 ? (
             <p className="text-sm text-gray-400 dark:text-zinc-500 text-center py-8">No machine data available.</p>
           ) : (
             <ResponsiveContainer width="100%" height={220}>

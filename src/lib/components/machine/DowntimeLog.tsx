@@ -152,11 +152,13 @@ export default function DowntimeLog({
     setLoading(true);
     setError(false);
     try {
-      const data = await fetchUnresolvedDowntime(machineId);
-      // filter by period if provided
-      const cutoff = periodHours
-        ? Date.now() - periodHours * 60 * 60 * 1000
-        : 0;
+      let data: DowntimeRecord[];
+      if (machineId.startsWith("demo-")) {
+        data = JSON.parse(localStorage.getItem(`predictech_demo_downtime_${machineId}`) || "[]");
+      } else {
+        data = await fetchUnresolvedDowntime(machineId);
+      }
+      const cutoff = periodHours ? Date.now() - periodHours * 60 * 60 * 1000 : 0;
       setRecords(
         data
           .filter((r) => !periodHours || new Date(r.startedAt).getTime() >= cutoff)

@@ -8,6 +8,7 @@ type Props = Machine & {
   onStart?: () => void;
   onStop?: () => void;
   onMaintenance?: () => void;
+  onDone?: () => void;
   maintenanceSince?: number;
 };
 
@@ -120,7 +121,7 @@ function StatBar({ label, pct, color }: { label: string; pct: number; color: str
 
 export default function MachineListElement({
   name, _id, liveKw, maxPowerConsumption, currentState,
-  onStart, onStop, onMaintenance, maintenanceSince,
+  onStart, onStop, onMaintenance, onDone, maintenanceSince,
 }: Props) {
   const util   = getMachineUtilization(_id);
   const colors = STATE_COLORS[currentState] ?? STATE_COLORS["idle"];
@@ -232,17 +233,15 @@ export default function MachineListElement({
           </div>
         )}
 
-        {/* action buttons */}
-        <div className="flex items-center gap-1.5 px-4 py-2.5 border-t border-gray-100 dark:border-zinc-800/60">
-          {currentState !== "on" && onStart &&
-            btn("▶ Start", onStart, "border-green-300 dark:border-green-700 text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20")}
-          {currentState === "on" && onStop &&
-            btn("■ Stop", onStop, "border-gray-300 dark:border-zinc-600 text-gray-600 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800")}
-          {currentState !== "in maintenance" && onMaintenance &&
-            btn("🔧 Maintenance", onMaintenance, "border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20")}
-          {currentState === "in maintenance" && onStart &&
-            btn("✓ Done", onStart, "border-green-300 dark:border-green-700 text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20")}
-        </div>
+        {/* action buttons — only Start/Stop; maintenance is managed by ticket lifecycle */}
+        {currentState !== "in maintenance" && (
+          <div className="flex items-center gap-1.5 px-4 py-2.5 border-t border-gray-100 dark:border-zinc-800/60">
+            {currentState !== "on" && onStart &&
+              btn("▶ Start", onStart, "border-green-300 dark:border-green-700 text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20")}
+            {currentState === "on" && onStop &&
+              btn("■ Stop", onStop, "border-gray-300 dark:border-zinc-600 text-gray-600 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800")}
+          </div>
+        )}
       </div>
     </Link>
   );
