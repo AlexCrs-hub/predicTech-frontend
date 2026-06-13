@@ -91,7 +91,6 @@ export default function MachineSensors(props: {
   const pendingRef = useRef<PendingReading[]>([]);
 
   useEffect(() => {
-    if (props.machineId.startsWith("demo-")) { setLoading(false); return; }
     const fetchSensors = async () => {
       setLoading(true);
       try {

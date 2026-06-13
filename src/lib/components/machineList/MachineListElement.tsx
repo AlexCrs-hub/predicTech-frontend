@@ -5,12 +5,15 @@ import { getMachineUtilization } from "@/lib/utils/machineSimulation";
 import { useNotifications } from "@/context/NotificationContext";
 
 type Props = Machine & {
-  onStart?: () => void;
-  onStop?: () => void;
-  onMaintenance?: () => void;
-  onDone?: () => void;
+  onStart?: () => Promise<boolean>;
+  onStop?: () => Promise<boolean>;
   maintenanceSince?: number;
+  intervalActive?: boolean;
+  utilizationPct?: number;
+  realCycles?: number;
 };
+
+type LogState = "idle" | "loading" | "ok" | "error";
 
 // ── Status config ─────────────────────────────────────────────────────────────
 
@@ -66,30 +69,6 @@ function DonutRing({ pct, color }: { pct: number; color: string }) {
   );
 }
 
-// ── Spark bars ────────────────────────────────────────────────────────────────
-
-function SparkBars({ machineId, color }: { machineId: string; color: string }) {
-  const u = getMachineUtilization(machineId);
-  const raw = [
-    u.runtimePct - 8, u.runtimePct + 2, u.runtimePct - 4,
-    u.runtimePct + 5, u.idlePct + 12,   u.runtimePct - 1,
-    u.runtimePct + 2, u.runtimePct,     u.runtimePct - 3,
-    u.runtimePct + 4, u.runtimePct - 2, u.runtimePct,
-  ];
-  const max = Math.max(...raw);
-  return (
-    <div className="flex items-end gap-[3px] h-7">
-      {raw.map((h, i) => (
-        <div key={i} className="w-[5px] rounded-sm" style={{
-          height: `${Math.max(8, (h / max) * 100)}%`,
-          backgroundColor: color,
-          opacity: i === raw.length - 1 ? 1 : 0.45,
-        }} />
-      ))}
-    </div>
-  );
-}
-
 // ── Stat cell ─────────────────────────────────────────────────────────────────
 
 function StatCell({ label, value, color }: { label: string; value: string; color?: string }) {
@@ -121,12 +100,25 @@ function StatBar({ label, pct, color }: { label: string; pct: number; color: str
 
 export default function MachineListElement({
   name, _id, liveKw, maxPowerConsumption, currentState,
-  onStart, onStop, onMaintenance, onDone, maintenanceSince,
+  onStart, onStop, maintenanceSince, intervalActive,
+  utilizationPct, realCycles,
 }: Props) {
-  const util   = getMachineUtilization(_id);
-  const colors = STATE_COLORS[currentState] ?? STATE_COLORS["idle"];
+  const sim        = getMachineUtilization(_id);
+  const runtimePct = utilizationPct != null ? Math.round(utilizationPct) : sim.runtimePct;
+  const idlePct    = utilizationPct != null ? Math.max(0, Math.round(100 - utilizationPct)) : sim.idlePct;
+  const cyclesVal  = realCycles ?? sim.cycles;
+  const colors     = STATE_COLORS[currentState] ?? STATE_COLORS["idle"];
   const { reports } = useNotifications();
   const openTickets = reports.filter((r) => r.machineId === _id && r.status !== "fixed");
+
+  const [logState, setLogState] = useState<LogState>("idle");
+
+  const handleLog = async (fn: () => Promise<boolean>) => {
+    setLogState("loading");
+    const ok = await fn().catch(() => false);
+    setLogState(ok ? "ok" : "error");
+    setTimeout(() => setLogState("idle"), 2000);
+  };
 
   // Maintenance timer
   const [elapsed, setElapsed] = useState(0);
@@ -145,15 +137,28 @@ export default function MachineListElement({
     : 0;
   const powerColor = powerPct >= 90 ? "#ef4444" : powerPct >= 70 ? "#f59e0b" : "#3b82f6";
 
-  const btn = (label: string, onClick: () => void, cls: string) => (
-    <button
-      type="button"
-      onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClick(); }}
-      className={`flex-1 text-[11px] font-semibold py-1.5 rounded-lg border transition-colors ${cls}`}
-    >
-      {label}
-    </button>
-  );
+  const btn = (label: string, onClick: () => Promise<boolean>, cls: string) => {
+    const isLoading = logState === "loading";
+    const displayLabel = logState === "ok" ? "✓ Logged"
+      : logState === "error" ? "✗ Failed"
+      : isLoading ? "…"
+      : label;
+    const displayCls = logState === "ok"
+      ? "border-green-400 text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20"
+      : logState === "error"
+      ? "border-red-400 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20"
+      : cls;
+    return (
+      <button
+        type="button"
+        disabled={isLoading}
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleLog(onClick); }}
+        className={`flex-1 text-[11px] font-semibold py-1.5 rounded-lg border transition-colors disabled:opacity-50 ${displayCls}`}
+      >
+        {displayLabel}
+      </button>
+    );
+  };
 
   return (
     <Link to={`/app/machine?machineId=${_id}`} className="block group">
@@ -189,22 +194,21 @@ export default function MachineListElement({
 
         {/* donut + idle bar */}
         <div className="flex items-center gap-4 px-5 py-4">
-          <DonutRing pct={util.runtimePct} color={CHART.primary} />
+          <DonutRing pct={runtimePct} color={CHART.primary} />
           <div className="flex-1 flex flex-col gap-2">
-            <StatBar label="Idle" pct={util.idlePct} color={CHART.idle} />
+            <StatBar label="Idle" pct={idlePct} color={CHART.idle} />
           </div>
         </div>
 
         {/* 2-column stat row */}
         <div className="flex border-t border-gray-100 dark:border-zinc-800/60 divide-x divide-gray-100 dark:divide-zinc-800/60">
-          <StatCell label="Utilization" value={`${util.runtimePct}%`} color={CHART.primary} />
-          <StatCell label="Cycles"      value={String(util.cycles)}   color="#6b7280" />
+          <StatCell label="Utilization" value={`${runtimePct}%`} color={CHART.primary} />
+          <StatCell label="Cycles"      value={String(cyclesVal)} color="#6b7280" />
         </div>
 
         {/* power footer */}
-        <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 dark:border-zinc-800/60"
+        <div className="flex items-center justify-end px-5 py-3 border-t border-gray-100 dark:border-zinc-800/60"
           style={{ backgroundColor: `${CHART.primary}12` }}>
-          <SparkBars machineId={_id} color={CHART.primary} />
           <div className="flex items-center gap-4 text-xs">
             <span className="text-gray-400 dark:text-zinc-500">
               Live <span className="font-semibold text-gray-800 dark:text-zinc-100">{liveKw > 0 ? `${liveKw.toFixed(1)} kW` : "—"}</span>
@@ -233,13 +237,13 @@ export default function MachineListElement({
           </div>
         )}
 
-        {/* action buttons — only Start/Stop; maintenance is managed by ticket lifecycle */}
+        {/* work interval logging — does not change machine state, only records operator activity */}
         {currentState !== "in maintenance" && (
           <div className="flex items-center gap-1.5 px-4 py-2.5 border-t border-gray-100 dark:border-zinc-800/60">
-            {currentState !== "on" && onStart &&
-              btn("▶ Start", onStart, "border-green-300 dark:border-green-700 text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20")}
-            {currentState === "on" && onStop &&
-              btn("■ Stop", onStop, "border-gray-300 dark:border-zinc-600 text-gray-600 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800")}
+            {!intervalActive && onStart &&
+              btn("▶ Log start", onStart, "border-green-300 dark:border-green-700 text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20")}
+            {intervalActive && onStop &&
+              btn("■ Log stop", onStop, "border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20")}
           </div>
         )}
       </div>

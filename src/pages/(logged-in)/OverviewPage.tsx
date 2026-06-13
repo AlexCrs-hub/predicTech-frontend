@@ -191,16 +191,10 @@ function InsightBar({ insights }: { insights: Insight[] }) {
   );
 }
 
-// ── Demo machines shown when API returns nothing ──────────────────────────────
-const DEMO_MACHINES: Machine[] = [
-  { _id: "demo-cnc-001", name: "CNC Fibre Laser #1", liveKw: 18.5, maxPowerConsumption: 25, currentState: "on", status: "on" },
-  { _id: "demo-cnc-002", name: "CNC Router #2",      liveKw: 12.1, maxPowerConsumption: 20, currentState: "on", status: "on" },
-  { _id: "demo-cnc-003", name: "Plasma Cutter #3",   liveKw: 0,    maxPowerConsumption: 30, currentState: "idle", status: "idle" },
-];
-
 // ── Page ─────────────────────────────────────────────────────────────────────
 export default function OverviewPage() {
   const [machines, setMachines] = useState<Machine[]>([]);
+  const [machineStatus, setMachineStatus] = useState<"loading" | "ok" | "auth" | "empty" | "error">("loading");
   const [period, setPeriod] = useState<Period>(PERIODS[0]);
   const [selectedMachine, setSelectedMachine] = useState<string>("all");
   const [costPeriod, setCostPeriod] = useState<CostPeriod>(COST_PERIODS[1]);
@@ -210,23 +204,25 @@ export default function OverviewPage() {
 
   useEffect(() => {
     fetchAllMachines()
-      .then((res) => setMachines(Array.isArray(res?.machines) ? res.machines : []))
-      .catch(() => setMachines([]));
+      .then((res) => {
+        if (res?.message === "You need to Login") { setMachineStatus("auth"); return; }
+        const list = Array.isArray(res?.machines) ? res.machines : [];
+        setMachines(list);
+        setMachineStatus(list.length > 0 ? "ok" : "empty");
+      })
+      .catch(() => setMachineStatus("error"));
   }, []);
 
   const activeReports = reports.filter((r) => r.status !== "fixed");
 
-  // Use demo machines as fallback when API returns empty
-  const effectiveMachines = machines.length > 0 ? machines : DEMO_MACHINES;
-
-  const leaderboard = [...effectiveMachines]
+  const leaderboard = [...machines]
     .map((m) => ({ ...m, utilPct: getMachineUtilization(m._id).runtimePct }))
     .sort((a, b) => b.utilPct - a.utilPct);
 
   const sourceMachines =
     selectedMachine === "all"
-      ? effectiveMachines
-      : effectiveMachines.filter((m) => m._id === selectedMachine);
+      ? machines
+      : machines.filter((m) => m._id === selectedMachine);
 
   const chartData = STATUS_BARS.map(({ key, label, color }) => {
     const total = sourceMachines.reduce(
@@ -237,18 +233,17 @@ export default function OverviewPage() {
   });
 
   // Power & cost KPIs — fall back to simulated values when WebSocket is silent
-  const wsKwTotal = machines.reduce((sum, m) => sum + (liveKw[m._id] || 0), 0);
+  const wsKwTotal = machines.reduce((sum: number, m: Machine) => sum + (liveKw[m._id] || 0), 0);
   const totalKw = wsKwTotal > 0
     ? wsKwTotal
-    : effectiveMachines.reduce((sum, m) => {
-        if (m._id.startsWith("demo-")) return sum + m.liveKw;
+    : machines.reduce((sum: number, m: Machine) => {
         const u = getMachineUtilization(m._id);
         return sum + +(((u.runtimePct / 100) * (m.maxPowerConsumption ?? 10) * 0.75).toFixed(1));
       }, 0);
   const hourlyCostEur = totalKw * ENERGY_RATE;
   const dailyCostEur  = hourlyCostEur * 24;
 
-  const costData = buildCostData(effectiveMachines, costPeriod.days);
+  const costData = buildCostData(machines, costPeriod.days);
   const totalCostInPeriod = costData.reduce((s, d) => s + d.cost, 0);
 
   // Export helpers
@@ -368,11 +363,31 @@ export default function OverviewPage() {
         </div>
       </div>
 
+      {/* ── status banners ── */}
+      {machineStatus === "loading" && (
+        <p className="text-sm text-gray-400 dark:text-zinc-500 animate-pulse">Loading machines…</p>
+      )}
+      {machineStatus === "auth" && (
+        <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-5 py-3 text-sm text-amber-700 dark:text-amber-400">
+          Session expired — please <a href="/login" className="underline font-semibold">log in again</a> to see live data.
+        </div>
+      )}
+      {machineStatus === "error" && (
+        <div className="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-5 py-3 text-sm text-red-700 dark:text-red-400">
+          Could not reach the server — check that the backend is running on port 8081.
+        </div>
+      )}
+      {machineStatus === "empty" && (
+        <div className="rounded-xl border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-5 py-3 text-sm text-gray-500 dark:text-zinc-400">
+          No machines found for this account. Add a machine to start seeing data.
+        </div>
+      )}
+
       {/* ── KPI tiles ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <KpiTile
           label="Machines"
-          value={String(effectiveMachines.length)}
+          value={String(machines.length)}
           sub={`${activeReports.length} open ticket${activeReports.length !== 1 ? "s" : ""}`}
         />
         <KpiTile
@@ -412,7 +427,7 @@ export default function OverviewPage() {
                   onChange={(e) => setSelectedMachine(e.target.value)}
                 >
                   <option value="all">All machines</option>
-                  {effectiveMachines.map((m) => (
+                  {machines.map((m) => (
                     <option key={m._id} value={m._id}>{m.name}</option>
                   ))}
                 </select>
@@ -620,7 +635,7 @@ export default function OverviewPage() {
           </div>
         </div>
         <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm p-4">
-          {effectiveMachines.length === 0 ? (
+          {machines.length === 0 ? (
             <p className="text-sm text-gray-400 dark:text-zinc-500 text-center py-8">No machine data available.</p>
           ) : (
             <ResponsiveContainer width="100%" height={220}>

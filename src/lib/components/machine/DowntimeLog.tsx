@@ -9,7 +9,6 @@ import {
   REASON_COLOR,
   ALL_REASONS,
 } from "@/lib/api/downtimeRecordsApi";
-import { toPeriod } from "@/lib/api/metricsApi";
 
 // ── entry row ─────────────────────────────────────────────────────────────────
 
@@ -134,12 +133,10 @@ function EntryRow({
 
 export default function DowntimeLog({
   machineId,
-  currentState,
   refreshKey = 0,
   periodHours,
 }: {
   machineId: string;
-  currentState: string;
   refreshKey?: number;
   periodHours?: number;
 }) {
@@ -152,12 +149,7 @@ export default function DowntimeLog({
     setLoading(true);
     setError(false);
     try {
-      let data: DowntimeRecord[];
-      if (machineId.startsWith("demo-")) {
-        data = JSON.parse(localStorage.getItem(`predictech_demo_downtime_${machineId}`) || "[]");
-      } else {
-        data = await fetchUnresolvedDowntime(machineId);
-      }
+      const data = await fetchUnresolvedDowntime(machineId);
       const cutoff = periodHours ? Date.now() - periodHours * 60 * 60 * 1000 : 0;
       setRecords(
         data

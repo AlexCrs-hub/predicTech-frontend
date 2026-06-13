@@ -7,6 +7,7 @@ interface User {
   isVerified: boolean;
   lastLogin: string;
   name: string;
+  role?: string;
   updatedAt: string;
   verificationToken: string;
   verificationTkoenExpiresAt: string;
@@ -20,12 +21,26 @@ interface UserData {
   user: User;
 }
 
+// Parse role from JWT cookie as fallback (cookie is not httpOnly)
+function getRoleFromJwt(): string | null {
+  try {
+    const raw = document.cookie.split("; ").find((c) => c.startsWith("token="));
+    if (!raw) return null;
+    const payload = JSON.parse(atob(raw.split("=")[1].split(".")[1]));
+    return payload.role ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // Context type definition
 interface AuthContextType {
   user: UserData | null;
   login: (userData: UserData) => void;
   logout: () => void;
   getUser: () => UserData | null;
+  getRole: () => string | null;
+  isAdmin: () => boolean;
 }
 
 // Create context
@@ -48,11 +63,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     localStorage.removeItem("user");
   };
 
-  // Function returning user data
   const getUser = () => user;
 
+  const getRole = (): string | null =>
+    user?.user?.role ?? getRoleFromJwt();
+
+  const isAdmin = (): boolean => getRole() === "admin";
+
   return (
-    <AuthContext.Provider value={{ user, login, logout, getUser }}>
+    <AuthContext.Provider value={{ user, login, logout, getUser, getRole, isAdmin }}>
       {children}
     </AuthContext.Provider>
   );
