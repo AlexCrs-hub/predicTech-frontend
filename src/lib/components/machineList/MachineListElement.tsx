@@ -69,30 +69,6 @@ function DonutRing({ pct, color }: { pct: number; color: string }) {
   );
 }
 
-// ── Spark bars ────────────────────────────────────────────────────────────────
-
-function SparkBars({ machineId, color }: { machineId: string; color: string }) {
-  const u = getMachineUtilization(machineId);
-  const raw = [
-    u.runtimePct - 8, u.runtimePct + 2, u.runtimePct - 4,
-    u.runtimePct + 5, u.idlePct + 12,   u.runtimePct - 1,
-    u.runtimePct + 2, u.runtimePct,     u.runtimePct - 3,
-    u.runtimePct + 4, u.runtimePct - 2, u.runtimePct,
-  ];
-  const max = Math.max(...raw);
-  return (
-    <div className="flex items-end gap-[3px] h-7">
-      {raw.map((h, i) => (
-        <div key={i} className="w-[5px] rounded-sm" style={{
-          height: `${Math.max(8, (h / max) * 100)}%`,
-          backgroundColor: color,
-          opacity: i === raw.length - 1 ? 1 : 0.45,
-        }} />
-      ))}
-    </div>
-  );
-}
-
 // ── Stat cell ─────────────────────────────────────────────────────────────────
 
 function StatCell({ label, value, color }: { label: string; value: string; color?: string }) {
@@ -231,9 +207,8 @@ export default function MachineListElement({
         </div>
 
         {/* power footer */}
-        <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 dark:border-zinc-800/60"
+        <div className="flex items-center justify-end px-5 py-3 border-t border-gray-100 dark:border-zinc-800/60"
           style={{ backgroundColor: `${CHART.primary}12` }}>
-          <SparkBars machineId={_id} color={CHART.primary} />
           <div className="flex items-center gap-4 text-xs">
             <span className="text-gray-400 dark:text-zinc-500">
               Live <span className="font-semibold text-gray-800 dark:text-zinc-100">{liveKw > 0 ? `${liveKw.toFixed(1)} kW` : "—"}</span>
