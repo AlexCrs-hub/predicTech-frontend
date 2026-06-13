@@ -17,6 +17,7 @@ import InteractiveTimeline from "@/lib/components/machine/InteractiveTimeline";
 import {
   fetchUtilization, fetchCutting,
   fetchCycles, fetchDowntimeHours,
+  fetchPlannedUnplanned,
   toPeriod,
 } from "@/lib/api/metricsApi";
 import {
@@ -290,23 +291,22 @@ export default function MachinePage() {
     downtimeHours: number | null;
     plannedHours: number | null;
     unplannedHours: number | null;
+    plannedPct: number | null;
+    unplannedPct: number | null;
   }>({
     utilization: null, availability: null, cuttingHours: null,
     cuttingPct: null, cycles: null, downtimeHours: null,
     plannedHours: null, unplannedHours: null,
+    plannedPct: null, unplannedPct: null,
   });
   const [dtStats, setDtStats] = useState<DowntimeStats | null>(null);
   const { search } = useLocation();
   const machineId = new URLSearchParams(search).get("machineId") || "";
-  const isDemo = machineId === "demo-cnc-001";
 
   const wsState = machineStates[machineId];
   const isRunning = wsState?.state?.toLowerCase() === "on";
 
-  const currentState: "on" | "idle" | "in maintenance" =
-    wsState?.state === "ON" && wsState?.health === "HEALTHY" ? "on" : "idle";
-
-  const livePower   = isDemo ? 18.5 : (liveKw[machineId] || 0);
+  const livePower   = liveKw[machineId] || 0;
   const costPerHour = livePower * ENERGY_RATE;
   const costPerDay  = costPerHour * 24;
 
@@ -326,23 +326,14 @@ export default function MachinePage() {
   })();
 
   useEffect(() => {
-    if (isDemo) {
-      setMachine({ _id: "demo-cnc-001", name: "CNC Fibre Laser #1", liveKw: 18.5, maxPowerConsumption: 25, currentState: "on", status: "on" });
-      return;
-    }
     fetchMachineById(machineId).then((res) => {
       if (res.error) setError(res.error);
       else setMachine(res.machine || null);
     });
-  }, [machineId, isDemo]);
+  }, [machineId]);
 
   useEffect(() => {
     if (!machineId) return;
-    if (isDemo) {
-      setMetrics({ utilization: 78.5, availability: 91.2, cuttingHours: 5.4, cuttingPct: 62.0, cycles: 347, downtimeHours: 1.8, plannedHours: 0.8, unplannedHours: 1.0 });
-      setDtStats({ reasonCounts: { tool_change: 3, material_wait: 2, micro_stop: 1 }, typeCounts: { planned: 2, unplanned: 4 }, total: 6, period: "day", machineId });
-      return;
-    }
     const p = toPeriod(dtPeriod.hours);
     Promise.allSettled([
       fetchUtilization(machineId, p),
@@ -350,24 +341,28 @@ export default function MachinePage() {
       fetchCycles(machineId, p),
       fetchDowntimeHours(machineId, p),
       fetchDowntimeStats(machineId, p),
-    ]).then(([util, cut, cyc, dth, dts]) => {
+      fetchPlannedUnplanned(machineId, p),
+    ]).then(([util, cut, cyc, dth, dts, pu]) => {
       const downtimeHours = dth.status === "fulfilled" ? dth.value.downtimeHours : null;
+      // availability derived from downtime (no dedicated backend endpoint)
       const availability  = downtimeHours !== null
         ? +Math.max(0, 100 - (downtimeHours / dtPeriod.hours) * 100).toFixed(1)
         : null;
       setMetrics({
-        utilization:    util.status === "fulfilled" ? util.value.utilizationPercentage : null,
+        utilization:    util.status  === "fulfilled" ? util.value.utilizationPercentage   : null,
         availability,
-        cuttingHours:   cut.status  === "fulfilled" ? cut.value.cuttingHours          : null,
-        cuttingPct:     cut.status  === "fulfilled" ? cut.value.cuttingPercentage      : null,
-        cycles:         cyc.status  === "fulfilled" ? cyc.value.cycles                : null,
+        cuttingHours:   cut.status   === "fulfilled" ? cut.value.cuttingHours             : null,
+        cuttingPct:     cut.status   === "fulfilled" ? cut.value.cuttingPercentage         : null,
+        cycles:         cyc.status   === "fulfilled" ? cyc.value.cycles                   : null,
         downtimeHours,
-        plannedHours:   null,
-        unplannedHours: null,
+        plannedHours:   pu.status    === "fulfilled" ? pu.value.plannedHours              : null,
+        unplannedHours: pu.status    === "fulfilled" ? pu.value.unplannedHours            : null,
+        plannedPct:     pu.status    === "fulfilled" ? pu.value.plannedPercentage         : null,
+        unplannedPct:   pu.status    === "fulfilled" ? pu.value.unplannedPercentage       : null,
       });
       setDtStats(dts.status === "fulfilled" ? dts.value : null);
     });
-  }, [machineId, dtPeriod.hours, isDemo]);
+  }, [machineId, dtPeriod.hours]);
 
   const oeeValue = metrics.availability != null && metrics.utilization != null
     ? +(metrics.availability * metrics.utilization / 100).toFixed(1)
@@ -686,7 +681,6 @@ export default function MachinePage() {
           <Card>
             <DowntimeLog
               machineId={machineId}
-              currentState={currentState}
               refreshKey={dtRefreshKey}
               periodHours={dtPeriod.hours}
             />

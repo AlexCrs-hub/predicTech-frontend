@@ -27,6 +27,7 @@ import ActiveMachineList from "./pages/(logged-in)/ActiveMachineList";
 import ContactPage from "./pages/(logged-in)/ContactPage";
 import BigScreenPage from "./pages/(logged-in)/BigScreenPage";
 import TicketsPage from "./pages/(logged-in)/TicketsPage";
+import NotificationGroupsPage from "./pages/(logged-in)/NotificationGroupsPage";
 import { AuthProvider } from "./context/AuthContext";
 import PrivateRoute from "./lib/components/PrivateRoute";
 import { WebSocketProvider } from "./context/WebSocketContext";
@@ -51,6 +52,7 @@ const router = createBrowserRouter([
       { path: "/app/bigscreen", element: <BigScreenPage /> },
       { path: "/app/tickets", element: <TicketsPage /> },
       { path: "/app/machine", element: <MachinePage /> },
+      { path: "/app/notification-groups", element: <NotificationGroupsPage /> },
     ],
   },
 ]);

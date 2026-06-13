@@ -38,15 +38,8 @@ export async function fetchCutting(machineId: string, period: ApiPeriod) {
     cuttingHours: number;
     cuttingPercentage: number;
     cuttingThreshold: number;
-    thresholds: { downtime: number; cutting: number; max: number };
     period: string;
     machineId: string;
-  }>;
-}
-
-export async function fetchAvailability(machineId: string, period: ApiPeriod) {
-  return get(`/metrics/availability/${machineId}/${period}`) as Promise<{
-    availabilityPercentage: number; period: string; machineId: string;
   }>;
 }
 

@@ -25,32 +25,42 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const clientRef = useRef<Client | null>(null);
 
     useEffect(() => {
-        const socket = new SockJS(`${API_URLS.WS_URL}/ws`);
+        let failCount = 0;
+
+        const makeSocket = () => new SockJS(`${API_URLS.WS_URL}/ws`);
+
         const client = new Client({
-        webSocketFactory: () => socket,
-        debug: (str) => console.log(str),
-        onConnect: () => {
-
-            client.subscribe("/topic/mqtt-data", (message: IMessage) => {
-                setReadings(message.body || "");
-            });
-
-            client.subscribe("/topic/machine-state", (message: IMessage) => {
-                const payload: MachineStatePayload = JSON.parse(message.body);
-
-                    setMachineStates(prev => ({
-                        ...prev,
-                        [payload.machineId]: payload
-                    }));
-            });
-        },
+            webSocketFactory: makeSocket,
+            reconnectDelay: 10_000,
+            // suppress per-frame debug noise
+            debug: () => {},
+            onConnect: () => {
+                failCount = 0;
+                client.subscribe("/topic/mqtt-data", (message: IMessage) => {
+                    setReadings(message.body || "");
+                });
+                client.subscribe("/topic/machine-state", (message: IMessage) => {
+                    try {
+                        const payload: MachineStatePayload = JSON.parse(message.body);
+                        setMachineStates(prev => ({ ...prev, [payload.machineId]: payload }));
+                    } catch { /* malformed frame */ }
+                });
+            },
+            onStompError: () => {
+                failCount++;
+                // After 3 failed attempts stop retrying to avoid console flood
+                if (failCount >= 3) client.deactivate();
+            },
+            onWebSocketError: () => {
+                failCount++;
+                if (failCount >= 3) client.deactivate();
+            },
         });
+
         client.activate();
         clientRef.current = client;
 
-        return () => {
-            client.deactivate();
-        };
+        return () => { client.deactivate(); };
     }, []);
 
     useEffect(() => {
