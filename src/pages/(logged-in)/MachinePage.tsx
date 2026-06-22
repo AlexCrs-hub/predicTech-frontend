@@ -123,9 +123,9 @@ function BigNumber({ value, unit }: { value: React.ReactNode; unit?: string }) {
   );
 }
 
-// ── OEE gauge (pure SVG) ──────────────────────────────────────────────────────
+// ── Cutting gauge (pure SVG) ──────────────────────────────────────────────────
 
-function OeeGauge({ value }: { value: number }) {
+function CuttingGauge({ value }: { value: number }) {
   const pct = Math.min(99.9, Math.max(0.1, value ?? 0));
   const r = 68, cx = 100, cy = 88, sw = 14;
 
@@ -145,15 +145,8 @@ function OeeGauge({ value }: { value: number }) {
     <div className="flex flex-col items-center w-full">
       <div className="relative w-[200px] h-[108px]">
         <svg width="200" height="108" viewBox="0 0 200 108">
-          <defs>
-            <linearGradient id="oeeGrad" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%"   stopColor="#ef4444" />
-              <stop offset="50%"  stopColor="#eab308" />
-              <stop offset="100%" stopColor="#22c55e" />
-            </linearGradient>
-          </defs>
-          <path d={bg}  fill="none" stroke="#e5e7eb"        strokeWidth={sw} strokeLinecap="round" className="dark:[stroke:#27272a]" />
-          <path d={arc} fill="none" stroke="url(#oeeGrad)"  strokeWidth={sw} strokeLinecap="round" />
+          <path d={bg}  fill="none" stroke="#e5e7eb" strokeWidth={sw} strokeLinecap="round" className="dark:[stroke:#27272a]" />
+          <path d={arc} fill="none" stroke="#3b82f6" strokeWidth={sw} strokeLinecap="round" />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-end pb-0.5 pointer-events-none">
           <span className="text-4xl font-extrabold text-gray-900 dark:text-zinc-50 leading-none">
@@ -364,10 +357,6 @@ export default function MachinePage() {
     });
   }, [machineId, dtPeriod.hours]);
 
-  const oeeValue = metrics.availability != null && metrics.utilization != null
-    ? +(metrics.availability * metrics.utilization / 100).toFixed(1)
-    : null;
-
   const cycleTimeS = metrics.cuttingHours != null && metrics.cycles != null && metrics.cycles > 0
     ? +((metrics.cuttingHours * 3600) / metrics.cycles).toFixed(1)
     : null;
@@ -393,9 +382,8 @@ export default function MachinePage() {
       ["Date", date],
       [],
       ["KPI", "Value"],
-      ["OEE (computed)",  oeeValue        !== null ? `${oeeValue}%`                        : "—"],
-      ["Availability",    metrics.availability  != null ? `${metrics.availability.toFixed(1)}%`  : "—"],
-      ["Utilization",     metrics.utilization   != null ? `${metrics.utilization.toFixed(1)}%`   : "—"],
+      ["Productive Cutting Time", metrics.cuttingPct  != null ? `${metrics.cuttingPct.toFixed(1)}%`  : "—"],
+      ["Availability",            metrics.availability != null ? `${metrics.availability.toFixed(1)}%` : "—"],
       ["Cycles",          metrics.cycles        !== null ? metrics.cycles.toString()               : "—"],
       ["Cycle Time",      cycleTimeS            !== null ? `${cycleTimeS}s`                        : "—"],
       ["Downtime (h)",    metrics.downtimeHours != null ? metrics.downtimeHours.toFixed(2)        : "—"],
@@ -457,27 +445,8 @@ export default function MachinePage() {
         {/* left column */}
         <div className="flex flex-col gap-4">
           <Card>
-            <Label>Overall OEE</Label>
-            <OeeGauge value={oeeValue ?? 0} />
-            <div className="flex justify-between mt-5">
-              {[
-                { label: "Availability", value: metrics.availability },
-                { label: "Utilization",  value: metrics.utilization  },
-                { label: "Cutting",      value: metrics.cuttingPct   },
-              ].map(({ label, value }) => (
-                <div
-                  key={label}
-                  className="flex flex-col items-center flex-1 text-center"
-                >
-                  <span className="text-sm font-bold text-green-600 dark:text-green-500">
-                    {value != null ? `${(value as number).toFixed(1)}%` : "—"}
-                  </span>
-                  <span className="text-[10px] text-gray-400 dark:text-zinc-500 mt-0.5">
-                    {label}
-                  </span>
-                </div>
-              ))}
-            </div>
+            <Label>Productive Cutting Time</Label>
+            <CuttingGauge value={metrics.cuttingPct ?? 0} />
           </Card>
 
           <Card>
