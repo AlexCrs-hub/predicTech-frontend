@@ -14,12 +14,8 @@ import MachineSensors from "@/lib/components/machine/MachineSensors";
 import { getMachineUtilization } from "@/lib/utils/machineSimulation";
 import { downloadCsv } from "@/lib/utils/exportCsv";
 import InteractiveTimeline from "@/lib/components/machine/InteractiveTimeline";
-import {
-  fetchUtilization, fetchCutting,
-  fetchCycles, fetchDowntimeHours,
-  fetchPlannedUnplanned,
-  toPeriod,
-} from "@/lib/api/metricsApi";
+import { toPeriod, fetchMetricSummary } from "@/lib/api/metricsApi";
+
 import {
   fetchDowntimeStats, DowntimeStats, DowntimeReason,
   REASON_LABEL, REASON_COLOR, ALL_REASONS,
@@ -319,40 +315,28 @@ export default function MachinePage() {
   })();
 
   useEffect(() => {
-    fetchMachineById(machineId).then((res) => {
-      if (res.error) setError(res.error);
-      else setMachine(res.machine || null);
-    });
-  }, [machineId]);
-
-  useEffect(() => {
     if (!machineId) return;
     const p = toPeriod(dtPeriod.hours);
+
     Promise.allSettled([
-      fetchUtilization(machineId, p),
-      fetchCutting(machineId, p),
-      fetchCycles(machineId, p),
-      fetchDowntimeHours(machineId, p),
+      fetchMetricSummary(machineId, p),
       fetchDowntimeStats(machineId, p),
-      fetchPlannedUnplanned(machineId, p),
-    ]).then(([util, cut, cyc, dth, dts, pu]) => {
-      const downtimeHours = dth.status === "fulfilled" ? dth.value.downtimeHours : null;
-      // availability derived from downtime (no dedicated backend endpoint)
-      const availability  = downtimeHours !== null
-        ? +Math.max(0, 100 - (downtimeHours / dtPeriod.hours) * 100).toFixed(1)
-        : null;
+    ]).then(([summary, dts]) => {
+      const s = summary.status === "fulfilled" ? summary.value : null;
+
       setMetrics({
-        utilization:    util.status  === "fulfilled" ? util.value.utilizationPercentage   : null,
-        availability,
-        cuttingHours:   cut.status   === "fulfilled" ? cut.value.cuttingHours             : null,
-        cuttingPct:     cut.status   === "fulfilled" ? cut.value.cuttingPercentage         : null,
-        cycles:         cyc.status   === "fulfilled" ? cyc.value.cycles                   : null,
-        downtimeHours,
-        plannedHours:   pu.status    === "fulfilled" ? pu.value.plannedHours              : null,
-        unplannedHours: pu.status    === "fulfilled" ? pu.value.unplannedHours            : null,
-        plannedPct:     pu.status    === "fulfilled" ? pu.value.plannedPercentage         : null,
-        unplannedPct:   pu.status    === "fulfilled" ? pu.value.unplannedPercentage       : null,
+        utilization:    s?.utilizationPercentage ?? null,
+        availability:   s ? +Math.max(0, 100 - (s.downtimeHours / dtPeriod.hours) * 100).toFixed(1) : null,
+        cuttingHours:   null,
+        cuttingPct:     null,
+        cycles:         s?.cycles ?? null,
+        downtimeHours:  s?.downtimeHours ?? null,
+        plannedHours:   null,
+        unplannedHours: null,
+        plannedPct:     null,
+        unplannedPct:   null,
       });
+
       setDtStats(dts.status === "fulfilled" ? dts.value : null);
     });
   }, [machineId, dtPeriod.hours]);
