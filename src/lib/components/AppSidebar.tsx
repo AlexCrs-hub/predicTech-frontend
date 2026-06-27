@@ -76,6 +76,15 @@ export function AppSidebar() {
         const maxPower = Number(
           machine.maxPowerConsumption ?? machine.max_power ?? 0,
         );
+        const sensorName = String(entry.sensorName || "").toLowerCase();
+
+        const isPowerSensor =
+          sensorName === "power" ||
+          sensorName === "kw" ||
+          sensorName.includes("power");
+
+        if (!isPowerSensor) return;
+        
         if (maxPower > 0 && value > maxPower) {
           newWarnings.push({
             id: `${entry.machineId}-${entry.sensorName}-${Date.now()}-${Math.random()}`,
@@ -100,7 +109,7 @@ export function AppSidebar() {
     Object.entries(machineStates).forEach(([machineId, state]) => {
       const machine = machines.find((m) => m._id === machineId);
       if (!machine) return;
-      if (state.health === "DISCONNECTED") {
+      if (state.health?.toLowerCase() === "disconnected") {
         newErrors.push({
           id: `${machineId}-connection-${Date.now()}-${Math.random()}`,
           machineId,
@@ -113,6 +122,7 @@ export function AppSidebar() {
         });
       }
     });
+    
     setErrors((prev) => {
       const currentDisconnected = new Set(newErrors.map((e) => e.machineId));
       const existingKeys = new Set(prev.map((e) => e.machineId));

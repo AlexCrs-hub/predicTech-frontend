@@ -7,7 +7,7 @@ import { useWebSocket } from "@/context/WebSocketContext";
 import { useNotifications, Report } from "@/context/NotificationContext";
 import { startWorkInterval, stopWorkInterval } from "@/lib/api/workIntervalApi";
 import { fetchUnresolvedDowntime, recordDowntimeReason, DowntimeReason } from "@/lib/api/downtimeRecordsApi";
-import { fetchUtilization, fetchCycles } from "@/lib/api/metricsApi";
+import { fetchMetricSummary } from "@/lib/api/metricsApi";
 
 type StateOverride = { state: Machine["currentState"]; since?: number };
 
@@ -42,17 +42,20 @@ export default function ActiveMachineList() {
   useEffect(() => {
     if (machines.length === 0) return;
     Promise.allSettled(
+      
       machines.map((m) =>
-        Promise.all([
-          fetchUtilization(m._id, "day"),
-          fetchCycles(m._id, "day"),
-        ]).then(([u, c]) => ({ id: m._id, utilization: u.utilizationPercentage, cycles: c.cycles }))
+        fetchMetricSummary(m._id, "day").then((summary) => ({
+        id: m._id,
+        utilization: summary.utilizationPercentage,
+        cycles: summary.cycles,
+      }))
       )
     ).then((results) => {
       const map: Record<string, { utilization: number; cycles: number }> = {};
       results.forEach((r) => {
         if (r.status === "fulfilled") map[r.value.id] = { utilization: r.value.utilization, cycles: r.value.cycles };
       });
+      console.log(map);
       setMachineMetrics(map);
     });
   }, [machines]);
@@ -72,8 +75,13 @@ export default function ActiveMachineList() {
         return;
       }
 
-      const wasOn   = prev.state === "ON" && prev.health === "HEALTHY";
-      const isNowOn = curr.state === "ON" && curr.health === "HEALTHY";
+      const wasOn =
+      prev.state?.toLowerCase() === "on" &&
+      prev.health?.toLowerCase() === "healthy";
+
+      const isNowOn =
+      curr.state?.toLowerCase() === "on" &&
+      curr.health?.toLowerCase() === "healthy";
 
       if (wasOn && !isNowOn && !alertedRef.current.has(machine._id)) {
         alertedRef.current.add(machine._id);
@@ -126,7 +134,12 @@ export default function ActiveMachineList() {
   const deriveState = (machine: Machine): Machine["currentState"] => {
     if (overrides[machine._id]) return overrides[machine._id].state;
     const ws = machineStates[machine._id];
-    if (ws?.state === "ON" && ws?.health === "HEALTHY") return "on";
+    if (
+      ws?.state?.toLowerCase() === "on" &&
+      ws?.health?.toLowerCase() === "healthy"
+    ) {
+      return "on";
+    }
     return "idle";
   };
 
