@@ -13,7 +13,7 @@ import {
   LineChart,
 } from "recharts";
 
-const GRAPH_UPDATE_INTERVAL_MS = 5000;
+const GRAPH_UPDATE_INTERVAL_MS = 1000;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_DISPLAY_POINTS = 200;
 
