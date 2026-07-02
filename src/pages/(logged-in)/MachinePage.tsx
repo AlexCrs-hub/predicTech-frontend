@@ -226,7 +226,7 @@ function useLivePowerBuffer(machineId: string, windowSize: number): LivePoint[] 
           .filter((r) => new Date(r.measuredAt).getTime() >= cutoff)
           .slice(-windowSize)
           .map((r) => ({
-            t: new Date(r.measuredAt).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+            t: new Date(r.measuredAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Asia/Riyadh" }),
             kw: Number(r.measurement),
           }));
 
@@ -250,8 +250,9 @@ function useLivePowerBuffer(machineId: string, windowSize: number): LivePoint[] 
       });
       if (!kwReading) return;
 
+      const measuredAt = parsed.measuredAt ? new Date(parsed.measuredAt) : new Date();
       const point: LivePoint = {
-        t: new Date().toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+        t: measuredAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Asia/Riyadh" }),
         kw: Number(kwReading.value),
       };
 

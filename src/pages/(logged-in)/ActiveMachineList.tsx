@@ -61,43 +61,32 @@ export default function ActiveMachineList() {
   }, [machines]);
 
   // ── automatic downtime detection via WebSocket state transitions ───────────────
-  useEffect(() => {
-    if (machines.length === 0) return;
-
-    machines.forEach((machine) => {
-      const prev = prevWsRef.current[machine._id];
-      const curr = machineStates[machine._id];
-
-      if (!curr) return;
-
-      if (!prev) {
-        prevWsRef.current[machine._id] = { state: curr.state, health: curr.health };
-        return;
-      }
-
-      const wasOn =
-      prev.state?.toLowerCase() === "on" &&
-      prev.health?.toLowerCase() === "healthy";
-
-      const isNowOn =
-      curr.state?.toLowerCase() === "on" &&
-      curr.health?.toLowerCase() === "healthy";
-
-      if (wasOn && !isNowOn && !alertedRef.current.has(machine._id)) {
-        alertedRef.current.add(machine._id);
-        setAlertQueue((q) => [...q, {
-          machineId:   machine._id,
-          machineName: machine.name,
-          value:       liveKw[machine._id] ?? 0,
-          threshold:   machine.downtimeThreshold ?? 0,
-        }]);
-      }
-
-      if (!wasOn && isNowOn) alertedRef.current.delete(machine._id);
-
-      prevWsRef.current[machine._id] = { state: curr.state, health: curr.health };
-    });
-  }, [machineStates, machines, liveKw]);
+  // DISABLED (test phase) — uncomment to re-enable downtime modals
+  // useEffect(() => {
+  //   if (machines.length === 0) return;
+  //   machines.forEach((machine) => {
+  //     const prev = prevWsRef.current[machine._id];
+  //     const curr = machineStates[machine._id];
+  //     if (!curr) return;
+  //     if (!prev) {
+  //       prevWsRef.current[machine._id] = { state: curr.state, health: curr.health };
+  //       return;
+  //     }
+  //     const wasOn = prev.state?.toLowerCase() === "on" && prev.health?.toLowerCase() === "healthy";
+  //     const isNowOn = curr.state?.toLowerCase() === "on" && curr.health?.toLowerCase() === "healthy";
+  //     if (wasOn && !isNowOn && !alertedRef.current.has(machine._id)) {
+  //       alertedRef.current.add(machine._id);
+  //       setAlertQueue((q) => [...q, {
+  //         machineId:   machine._id,
+  //         machineName: machine.name,
+  //         value:       liveKw[machine._id] ?? 0,
+  //         threshold:   machine.downtimeThreshold ?? 0,
+  //       }]);
+  //     }
+  //     if (!wasOn && isNowOn) alertedRef.current.delete(machine._id);
+  //     prevWsRef.current[machine._id] = { state: curr.state, health: curr.health };
+  //   });
+  // }, [machineStates, machines, liveKw]);
 
   // ── ticket → maintenance state ─────────────────────────────────────────────────
   useEffect(() => {
