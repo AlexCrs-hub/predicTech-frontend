@@ -26,7 +26,6 @@ const chartConfig = {
 } satisfies ChartConfig;
 
 export default function GradientChart({ data }: { data: number[] }) {
-  // Mapujemy dane wejściowe do formatu wykresu
   const chartData = data.map((value, index) => ({ index: index + 1, value }));
 
   return (

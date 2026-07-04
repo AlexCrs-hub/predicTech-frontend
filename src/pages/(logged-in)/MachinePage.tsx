@@ -1,11 +1,13 @@
 import { fetchMachineById } from "@/lib/api/machineApi";
 import { useWebSocket } from "@/context/WebSocketContext";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { Machine } from "@/lib/components/machineList/types";
 import {
   ResponsiveContainer,
+  ComposedChart,
   LineChart,
+  Area,
   Line,
   XAxis,
   YAxis,
@@ -15,7 +17,7 @@ import {
 import DowntimeLog from "@/lib/components/machine/DowntimeLog";
 import MachineSensors from "@/lib/components/machine/MachineSensors";
 import { fetchSensorsByMachine } from "@/lib/api/sensorApi";
-import { fetchReadingsForSensor } from "@/lib/api/readingApi";
+import { fetchReadingWindow, fetchPowerTimeseries } from "@/lib/api/readingWindowApi";
 import { getMachineUtilization } from "@/lib/utils/machineSimulation";
 import { downloadCsv } from "@/lib/utils/exportCsv";
 import _InteractiveTimeline from "@/lib/components/machine/InteractiveTimeline";
@@ -188,177 +190,360 @@ function DowntimeModal({
   );
 }
 
-// ── Live power rolling-window hook ────────────────────────────────────────────
+// ── time helpers ──────────────────────────────────────────────────────────────
 
-const DEFAULT_LIVE_WINDOW = 300;
-const MIN_WINDOW = 100;
-const MAX_WINDOW = 3000;
-const WINDOW_STEP = 100;
+const TZ = "Asia/Riyadh";
+const fmtTime = (d: Date) =>
+  d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: TZ });
+
 type LivePoint = { t: string; kw: number };
 
-function useLivePowerBuffer(machineId: string, windowSize: number): LivePoint[] {
-  const { readings } = useWebSocket();
-  const bufferRef = useRef<LivePoint[]>([]);
-  const [points, setPoints] = useState<LivePoint[]>([]);
+// ── power sensor ID hook ──────────────────────────────────────────────────────
 
-  // Re-fetch history whenever machineId or windowSize changes
+function usePowerSensorId(machineId: string): string | null {
+  const [sensorId, setSensorId] = useState<string | null>(null);
   useEffect(() => {
     if (!machineId) return;
-    let cancelled = false;
-
-    bufferRef.current = [];
-    setPoints([]);
-
-    (async () => {
-      try {
-        const sensors = await fetchSensorsByMachine(machineId);
-        const powerSensor = (sensors as any[]).find((s) => {
+    setSensorId(null);
+    fetchSensorsByMachine(machineId)
+      .then((sensors: any) => {
+        const ps = (Array.isArray(sensors) ? sensors : []).find((s: any) => {
           const name = String(s.normalizedName || s.name || "").toLowerCase();
           return s.role === "power" || name.includes("power") || name === "kw";
         });
-        if (!powerSensor || cancelled) return;
+        if (ps) setSensorId(ps._id);
+      })
+      .catch(() => {});
+  }, [machineId]);
+  return sensorId;
+}
 
-        const allReadings = await fetchReadingsForSensor(powerSensor._id);
-        if (cancelled) return;
+// ── Chart 1: Interactive (pan/zoom + live) ────────────────────────────────────
 
-        const cutoff = Date.now() - windowSize * 1000;
-        const historical: LivePoint[] = (allReadings as any[])
-          .filter((r) => new Date(r.measuredAt).getTime() >= cutoff)
-          .slice(-windowSize)
-          .map((r) => ({
-            t: new Date(r.measuredAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Asia/Riyadh" }),
-            kw: Number(r.measurement),
-          }));
+const WINDOW_PRESETS = [
+  { label: "5m",  secs: 300   },
+  { label: "15m", secs: 900   },
+  { label: "1h",  secs: 3600  },
+  { label: "6h",  secs: 21600 },
+] as const;
+type WindowPreset = typeof WINDOW_PRESETS[number];
 
-        bufferRef.current = historical;
-        setPoints(historical);
-      } catch { /* start empty if fetch fails */ }
-    })();
+function InteractivePowerChart({
+  machineId,
+  sensorId,
+}: {
+  machineId: string;
+  sensorId: string | null;
+}) {
+  const { readings } = useWebSocket();
+  const [preset, setPreset]       = useState<WindowPreset>(WINDOW_PRESETS[0]);
+  const [mode, setMode]           = useState<"live" | "hist">("live");
+  const [histToMs, setHistToMs]   = useState(0);
+  const [points, setPoints]       = useState<LivePoint[]>([]);
+  const [loading, setLoading]     = useState(false);
+  const bufferRef                 = useRef<LivePoint[]>([]);
 
-    return () => { cancelled = true; };
-  }, [machineId, windowSize]);
+  const load = useCallback(async (fromMs: number, toMs: number) => {
+    if (!sensorId) return;
+    setLoading(true);
+    try {
+      const data = await fetchReadingWindow({
+        sensorId,
+        from:  new Date(fromMs).toISOString(),
+        to:    new Date(toMs).toISOString(),
+        limit: 2000,
+        order: "asc",
+      });
+      const pts: LivePoint[] = data.points.map((p) => ({ t: fmtTime(new Date(p.t)), kw: p.v }));
+      bufferRef.current = pts;
+      setPoints(pts);
+    } catch { /* keep empty */ }
+    finally { setLoading(false); }
+  }, [sensorId]);
 
-  // Append live readings from WebSocket
+  // Reload when sensor, preset, mode, or historical anchor changes
   useEffect(() => {
-    if (!readings) return;
+    if (!sensorId) return;
+    if (mode === "live") {
+      const to = Date.now();
+      load(to - preset.secs * 1000, to);
+    } else if (histToMs > 0) {
+      load(histToMs - preset.secs * 1000, histToMs);
+    }
+  }, [sensorId, preset, mode, histToMs, load]);
+
+  // Append SSE readings when in live mode
+  useEffect(() => {
+    if (mode !== "live" || !readings) return;
     try {
       const parsed = JSON.parse(readings);
-      const kwReading = (parsed.readings || []).find((r: any) => {
+      const kwR = (parsed.readings || []).find((r: any) => {
         if (r.machineId !== machineId) return false;
         const name = String(r.sensorName || r.normalizedName || "").toLowerCase();
         return name.includes("power") || name === "kw";
       });
-      if (!kwReading) return;
-
-      const measuredAt = parsed.measuredAt ? new Date(parsed.measuredAt) : new Date();
-      const point: LivePoint = {
-        t: measuredAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Asia/Riyadh" }),
-        kw: Number(kwReading.value),
-      };
-
-      const buf = bufferRef.current;
-      const next = buf.length >= windowSize
-        ? [...buf.slice(buf.length - windowSize + 1), point]
-        : [...buf, point];
+      if (!kwR) return;
+      const ts    = parsed.measuredAt ? new Date(parsed.measuredAt) : new Date();
+      const point: LivePoint = { t: fmtTime(ts), kw: Number(kwR.value) };
+      const buf   = bufferRef.current;
+      const next  = buf.length >= preset.secs ? [...buf.slice(1), point] : [...buf, point];
       bufferRef.current = next;
-      setPoints(next);
-    } catch { /* ignore malformed */ }
-  }, [readings, machineId, windowSize]);
+      setPoints([...next]);
+    } catch {}
+  }, [readings, machineId, mode, preset]);
 
-  return points;
-}
-
-// ── Live Power Chart ──────────────────────────────────────────────────────────
-
-function LivePowerChart({ machineId }: { machineId: string }) {
-  const [windowSize, setWindowSize] = useState(DEFAULT_LIVE_WINDOW);
-  const [inputStr, setInputStr]     = useState(String(DEFAULT_LIVE_WINDOW));
-  const points = useLivePowerBuffer(machineId, windowSize);
-
-  const applyWindow = (val: number) => {
-    const clamped = Math.max(MIN_WINDOW, Math.min(MAX_WINDOW, Math.round(val / WINDOW_STEP) * WINDOW_STEP));
-    setWindowSize(clamped);
-    setInputStr(String(clamped));
+  const panLeft = () => {
+    const currentTo = mode === "live" ? Date.now() : histToMs;
+    setMode("hist");
+    setHistToMs(currentTo - preset.secs * 1000);
+  };
+  const panRight = () => {
+    const newTo = histToMs + preset.secs * 1000;
+    if (newTo >= Date.now() - 10_000) setMode("live");
+    else setHistToMs(newTo);
   };
 
-  const handleInputBlur = () => {
-    const num = parseInt(inputStr, 10);
-    applyWindow(isNaN(num) ? windowSize : num);
-  };
-
-  const latest = points[points.length - 1]?.kw ?? null;
+  const latest = mode === "live" ? (points[points.length - 1]?.kw ?? null) : null;
 
   return (
     <div>
-      {/* top row: current value + window controls */}
-      <div className="flex items-center gap-3 mb-3">
-        <div className="flex items-baseline gap-1.5">
-          <span className="text-2xl font-extrabold text-blue-600 dark:text-blue-400 leading-none tabular-nums">
-            {latest !== null ? latest.toFixed(2) : "—"}
-          </span>
-          <span className="text-sm text-gray-400 dark:text-zinc-500">kW</span>
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        {latest !== null && (
+          <div className="flex items-baseline gap-1 mr-2">
+            <span className="text-2xl font-extrabold text-blue-600 dark:text-blue-400 tabular-nums leading-none">
+              {latest.toFixed(2)}
+            </span>
+            <span className="text-sm text-gray-400 dark:text-zinc-500">kW</span>
+          </div>
+        )}
+
+        {/* window presets */}
+        <div className="flex rounded-md border border-gray-200 dark:border-zinc-700 overflow-hidden">
+          {WINDOW_PRESETS.map((p) => (
+            <button key={p.label} onClick={() => setPreset(p)}
+              className={`px-2.5 py-1 text-[10px] transition-colors ${
+                preset.label === p.label
+                  ? "bg-gray-900 dark:bg-zinc-100 text-white dark:text-zinc-900 font-semibold"
+                  : "text-gray-500 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800"
+              }`}>{p.label}</button>
+          ))}
         </div>
 
-        <div className="ml-auto flex items-center gap-1.5">
-          <span className="text-[10px] text-gray-400 dark:text-zinc-500 uppercase tracking-wide mr-1">Window</span>
-          <button
-            onClick={() => applyWindow(windowSize - WINDOW_STEP)}
-            disabled={windowSize <= MIN_WINDOW}
-            className="w-7 h-7 rounded-md border border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-zinc-300 text-sm font-bold hover:bg-gray-100 dark:hover:bg-zinc-800 disabled:opacity-30 transition-colors"
-          >−</button>
-          <input
-            type="number"
-            value={inputStr}
-            onChange={(e) => setInputStr(e.target.value)}
-            onBlur={handleInputBlur}
-            onKeyDown={(e) => e.key === "Enter" && handleInputBlur()}
-            className="w-16 text-center text-xs rounded-md border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-800 dark:text-zinc-200 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 tabular-nums"
-          />
-          <button
-            onClick={() => applyWindow(windowSize + WINDOW_STEP)}
-            disabled={windowSize >= MAX_WINDOW}
-            className="w-7 h-7 rounded-md border border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-zinc-300 text-sm font-bold hover:bg-gray-100 dark:hover:bg-zinc-800 disabled:opacity-30 transition-colors"
-          >+</button>
-          <span className="text-[10px] text-gray-400 dark:text-zinc-500">s</span>
-          <span className="text-[10px] text-gray-400 dark:text-zinc-500 ml-2 tabular-nums">{points.length}/{windowSize}</span>
-        </div>
+        {/* pan */}
+        <button onClick={panLeft}
+          className="w-7 h-7 rounded-md border border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 text-base flex items-center justify-center hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors">
+          ‹
+        </button>
+        <button onClick={panRight} disabled={mode === "live"}
+          className="w-7 h-7 rounded-md border border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 text-base flex items-center justify-center hover:bg-gray-100 dark:hover:bg-zinc-800 disabled:opacity-30 transition-colors">
+          ›
+        </button>
+
+        {/* live indicator */}
+        {mode === "live" ? (
+          <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-[10px] font-semibold">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+            Live
+          </span>
+        ) : (
+          <button onClick={() => setMode("live")}
+            className="px-2.5 py-0.5 rounded-full border border-gray-200 dark:border-zinc-700 text-[10px] text-gray-500 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors">
+            Go Live
+          </button>
+        )}
+
+        {loading && <span className="text-[10px] text-gray-400 dark:text-zinc-500 animate-pulse ml-1">Loading…</span>}
       </div>
 
       {points.length === 0 ? (
         <div className="flex items-center justify-center h-[220px] text-sm text-gray-400 dark:text-zinc-500 italic">
-          Waiting for live data…
+          {loading ? "Loading…" : "No data for this window"}
         </div>
       ) : (
         <ResponsiveContainer width="100%" height={220}>
           <LineChart data={points} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" className="dark:[stroke:#27272a]" />
-            <XAxis
-              dataKey="t"
-              tick={{ fontSize: 9, fill: "#9ca3af" }}
-              interval="preserveStartEnd"
-              axisLine={false}
-              tickLine={false}
-            />
-            <YAxis
-              tick={{ fontSize: 9, fill: "#9ca3af" }}
-              axisLine={false}
-              tickLine={false}
-              width={42}
-              unit=" kW"
-            />
-            <Tooltip
-              formatter={(v: number) => [`${v.toFixed(2)} kW`, "Power"]}
-              contentStyle={{ fontSize: 11, borderRadius: 8, border: "1px solid #e5e7eb" }}
-            />
-            <Line
-              type="monotone"
-              dataKey="kw"
-              stroke="#3b82f6"
-              strokeWidth={2}
-              dot={false}
-              isAnimationActive={false}
-            />
+            <XAxis dataKey="t" tick={{ fontSize: 9, fill: "#9ca3af" }} interval="preserveStartEnd" axisLine={false} tickLine={false} />
+            <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={42} unit=" kW" domain={["auto", "auto"]} />
+            <Tooltip formatter={(v: number) => [`${v.toFixed(2)} kW`, "Power"]}
+              contentStyle={{ fontSize: 11, borderRadius: 8, border: "1px solid #e5e7eb" }} />
+            <Line type="monotone" dataKey="kw" stroke="#3b82f6" strokeWidth={2} dot={false} isAnimationActive={false} />
           </LineChart>
+        </ResponsiveContainer>
+      )}
+    </div>
+  );
+}
+
+// ── Chart 2: Historical avg + min/max band ────────────────────────────────────
+
+const HIST_PERIODS = [
+  { label: "24h", hours: 24,  gran: "minute" as const },
+  { label: "7d",  hours: 168, gran: "hour"   as const },
+  { label: "30d", hours: 720, gran: "day"    as const },
+];
+type HistPeriod = typeof HIST_PERIODS[number];
+
+type BandPoint = { t: string; avg: number; low: number; band: number };
+
+function BandTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null;
+  const find = (key: string) => payload.find((p: any) => p.dataKey === key)?.value as number | undefined;
+  const avg = find("avg"), low = find("low"), band = find("band");
+  const max = low != null && band != null ? +(low + band).toFixed(2) : null;
+  return (
+    <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-lg px-3 py-2 text-xs shadow-lg space-y-0.5">
+      <p className="text-gray-400 dark:text-zinc-500 mb-1">{label}</p>
+      {avg != null && <p><span className="font-semibold text-blue-600 dark:text-blue-400">Avg </span>{avg.toFixed(2)} kW</p>}
+      {low != null && <p><span className="text-gray-400 dark:text-zinc-500">Min </span>{low.toFixed(2)} kW</p>}
+      {max != null && <p><span className="text-gray-400 dark:text-zinc-500">Max </span>{max} kW</p>}
+    </div>
+  );
+}
+
+function autoGranularity(fromMs: number, toMs: number): "minute" | "hour" | "day" {
+  const diffH = (toMs - fromMs) / 3_600_000;
+  if (diffH <= 48)  return "minute";
+  if (diffH <= 336) return "hour";
+  return "day";
+}
+
+function HistoricalPowerChart({ machineId }: { machineId: string }) {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const weekAgoStr = new Date(Date.now() - 7 * 24 * 3_600_000).toISOString().slice(0, 10);
+
+  const [mode, setMode]               = useState<"preset" | "custom">("preset");
+  const [period, setPeriod]           = useState<HistPeriod>(HIST_PERIODS[1]);
+  const [customFrom, setCustomFrom]   = useState(weekAgoStr);
+  const [customTo, setCustomTo]       = useState(todayStr);
+  const [applied, setApplied]         = useState<{ from: string; to: string } | null>(null);
+  const [chartData, setChartData]     = useState<BandPoint[]>([]);
+  const [loading, setLoading]         = useState(false);
+
+  useEffect(() => {
+    if (!machineId) return;
+    if (mode === "custom" && !applied) return;
+
+    setLoading(true);
+
+    let fromMs: number, toMs: number, gran: "minute" | "hour" | "day";
+
+    if (mode === "preset") {
+      toMs   = Date.now();
+      fromMs = toMs - period.hours * 3_600_000;
+      gran   = period.gran;
+    } else {
+      fromMs = new Date(applied!.from + "T00:00:00").getTime();
+      toMs   = new Date(applied!.to   + "T23:59:59").getTime();
+      gran   = autoGranularity(fromMs, toMs);
+    }
+
+    const fmtOpts: Intl.DateTimeFormatOptions = gran === "day"
+      ? { month: "short", day: "numeric", timeZone: TZ }
+      : { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: TZ };
+
+    fetchPowerTimeseries({
+      machineId,
+      from: new Date(fromMs).toISOString(),
+      to:   new Date(toMs).toISOString(),
+      granularity: gran,
+    })
+      .then((data) => {
+        setChartData(data.points.map((p) => ({
+          t:    new Date(p.t).toLocaleString("en-GB", fmtOpts),
+          avg:  p.avgPowerKw,
+          low:  p.minPowerKw,
+          band: +(p.maxPowerKw - p.minPowerKw).toFixed(3),
+        })));
+      })
+      .catch(() => setChartData([]))
+      .finally(() => setLoading(false));
+  }, [machineId, mode, period, applied]);
+
+  const handleApply = () => {
+    if (customFrom && customTo && customFrom <= customTo)
+      setApplied({ from: customFrom, to: customTo });
+  };
+
+  const emptyMsg = loading ? "Loading…"
+    : mode === "custom" && !applied ? "Select a date range and click Apply"
+    : "No data for this period";
+
+  return (
+    <div>
+      <div className="flex flex-col gap-2 mb-3">
+        {/* top row: presets + custom toggle */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex rounded-md border border-gray-200 dark:border-zinc-700 overflow-hidden">
+            {HIST_PERIODS.map((p) => (
+              <button key={p.label}
+                onClick={() => { setPeriod(p); setMode("preset"); }}
+                className={`px-2.5 py-1 text-[10px] transition-colors ${
+                  mode === "preset" && period.label === p.label
+                    ? "bg-gray-900 dark:bg-zinc-100 text-white dark:text-zinc-900 font-semibold"
+                    : "text-gray-500 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800"
+                }`}>{p.label}</button>
+            ))}
+          </div>
+
+          <button
+            onClick={() => setMode(mode === "custom" ? "preset" : "custom")}
+            className={`px-2.5 py-1 text-[10px] rounded-md border transition-colors ${
+              mode === "custom"
+                ? "border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-semibold"
+                : "border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800"
+            }`}>
+            Custom
+          </button>
+
+          {loading && <span className="text-[10px] text-gray-400 dark:text-zinc-500 animate-pulse">Loading…</span>}
+        </div>
+
+        {/* custom date pickers */}
+        {mode === "custom" && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <input
+              type="date"
+              value={customFrom}
+              max={customTo || todayStr}
+              onChange={(e) => setCustomFrom(e.target.value)}
+              className="text-xs rounded-md border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-800 dark:text-zinc-200 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            <span className="text-[10px] text-gray-400 dark:text-zinc-500">–</span>
+            <input
+              type="date"
+              value={customTo}
+              min={customFrom}
+              max={todayStr}
+              onChange={(e) => setCustomTo(e.target.value)}
+              className="text-xs rounded-md border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-800 dark:text-zinc-200 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            <button
+              onClick={handleApply}
+              disabled={!customFrom || !customTo || customFrom > customTo}
+              className="px-3 py-1 text-[10px] rounded-md bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Apply
+            </button>
+          </div>
+        )}
+      </div>
+
+      {chartData.length === 0 ? (
+        <div className="flex items-center justify-center h-[220px] text-sm text-gray-400 dark:text-zinc-500 italic">
+          {emptyMsg}
+        </div>
+      ) : (
+        <ResponsiveContainer width="100%" height={220}>
+          <ComposedChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" className="dark:[stroke:#27272a]" />
+            <XAxis dataKey="t" tick={{ fontSize: 9, fill: "#9ca3af" }} interval="preserveStartEnd" axisLine={false} tickLine={false} />
+            <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={42} unit=" kW" domain={["auto", "auto"]} />
+            <Tooltip content={<BandTooltip />} />
+            <Area type="monotone" dataKey="low"  stroke="none" fill="none"    stackId="b" legendType="none" isAnimationActive={false} />
+            <Area type="monotone" dataKey="band" stroke="none" fill="#3b82f6" fillOpacity={0.12} stackId="b" legendType="none" isAnimationActive={false} />
+            <Line type="monotone" dataKey="avg"  stroke="#3b82f6" strokeWidth={2} dot={false} isAnimationActive={false} />
+          </ComposedChart>
         </ResponsiveContainer>
       )}
     </div>
@@ -405,6 +590,7 @@ export default function MachinePage() {
 
   const { search }  = useLocation();
   const machineId   = new URLSearchParams(search).get("machineId") || "";
+  const powerSensorId = usePowerSensorId(machineId);
   const wsState     = machineStates[machineId];
   const isRunning   = wsState?.state?.toLowerCase() === "on";
   const livePower   = liveKw[machineId] ?? 0;
@@ -602,10 +788,16 @@ export default function MachinePage() {
         {/* right column */}
         <div className="flex flex-col gap-4">
 
-          {/* live power chart — 300-sample rolling window from WebSocket */}
+          {/* interactive power chart — pan/zoom + live SSE */}
           <Card>
-            <Label>Live Power — real-time</Label>
-            <LivePowerChart machineId={machineId} />
+            <Label>Power — Live / Interactive</Label>
+            <InteractivePowerChart machineId={machineId} sensorId={powerSensorId} />
+          </Card>
+
+          {/* historical power chart — avg + min/max band */}
+          <Card>
+            <Label>Power — Historical</Label>
+            <HistoricalPowerChart machineId={machineId} />
           </Card>
 
           {/*

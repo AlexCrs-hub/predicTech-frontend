@@ -109,10 +109,10 @@ export default function MachineInputForm() {
                 <Input
                   placeholder="Enter machine name"
                   {...field}
-                  value={machineName} // kontrolowanie wartości przez useState
+                  value={machineName}
                   onChange={(e) => {
-                    setMachineName(e.target.value); // aktualizacja wartości w stanie
-                    field.onChange(e.target.value); // synchronizacja z react-hook-form
+                    setMachineName(e.target.value);
+                    field.onChange(e.target.value);
                   }}
                 />
               </FormControl>

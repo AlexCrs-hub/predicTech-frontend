@@ -17,7 +17,6 @@ import { Button } from "@/lib/components/ui/button";
 import { useState } from "react";
 import { registerUser } from "@/lib/api/authApi";
 
-// Schemat walidacji
 const FormSchema = z
   .object({
     name: z.string().min(2, { message: "Name must be at least 2 characters." }),
@@ -37,6 +36,7 @@ const FormSchema = z
 export default function RegisterPage() {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
+  const [serverError, setServerError] = useState("");
 
   const form = useForm<z.infer<typeof FormSchema>>({
     resolver: zodResolver(FormSchema),
@@ -50,28 +50,20 @@ export default function RegisterPage() {
 
   async function onSubmit(data: z.infer<typeof FormSchema>) {
     setIsLoading(true);
+    setServerError("");
 
     try {
-      const response = await registerUser(
-        data.email,
-        data.name,
-        data.password
-      );
+      const response = await registerUser(data.email, data.name, data.password);
 
       if (!response.success) {
-        const errorData = await response.message;
-        console.error("Backend error:", errorData);
-        throw new Error(errorData.error || "Something went wrong.");
+        setServerError(response.message || "Registration failed. Please try again.");
+        return;
       }
 
-      toast({
-        title: "Success!",
-        description: "Account created successfully.",
-      });
+      toast({ title: "Account created!", description: "You can now log in." });
       navigate("/login");
-    } catch (error) {
-      console.error("Błąd rejestracji:", error);
-      toast({ title: "Error", description: "lol", variant: "destructive" });
+    } catch {
+      setServerError("Could not reach the server. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -86,6 +78,13 @@ export default function RegisterPage() {
         >
           <h1 className="text-3xl font-medium text-black/60">Register to</h1>
           <h1 className="text-4xl font-medium pb-4">PredicTech</h1>
+
+          {serverError && (
+            <div className="flex items-start gap-2 rounded-md bg-red-50 border border-red-200 px-3 py-2 w-3/5">
+              <span className="text-red-500 mt-0.5 shrink-0">✕</span>
+              <p className="text-sm text-red-700">{serverError}</p>
+            </div>
+          )}
 
           <FormField
             control={form.control}

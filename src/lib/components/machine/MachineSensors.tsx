@@ -1,5 +1,5 @@
 import { useWebSocket } from "@/context/WebSocketContext";
-import { fetchReadingsForSensor } from "@/lib/api/readingApi";
+import { fetchReadingWindow } from "@/lib/api/readingWindowApi";
 import { fetchSensorsByMachine } from "@/lib/api/sensorApi";
 import { Sensor } from "@/lib/types/Sensor";
 import { useState, useEffect, useRef, useMemo, memo } from "react";
@@ -20,12 +20,16 @@ const MAX_DISPLAY_POINTS = 200;
 type PendingReading = { sensorName: string; value: number; measuredAt: Date };
 type ChartPoint = { measuredAt: string; measurement: number };
 
+const TZ_OPTS: Intl.DateTimeFormatOptions = {
+  hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Asia/Riyadh",
+};
+
 function downsample(readings: Sensor["readings"], max: number): ChartPoint[] {
   if (!readings || readings.length === 0) return [];
   if (readings.length <= max) {
     return readings.map((r) => ({
       measurement: r.measurement,
-      measuredAt: new Date(r.measuredAt).toLocaleTimeString(),
+      measuredAt: new Date(r.measuredAt).toLocaleTimeString("en-GB", TZ_OPTS),
     }));
   }
   const step = readings.length / max;
@@ -33,7 +37,7 @@ function downsample(readings: Sensor["readings"], max: number): ChartPoint[] {
     const r = readings[Math.floor(i * step)];
     return {
       measurement: r.measurement,
-      measuredAt: new Date(r.measuredAt).toLocaleTimeString(),
+      measuredAt: new Date(r.measuredAt).toLocaleTimeString("en-GB", TZ_OPTS),
     };
   });
 }
@@ -111,9 +115,21 @@ export default function MachineSensors(props: {
     const fetchAllReadings = async () => {
       setLoading(true);
       try {
+        const now = new Date();
+        const dayAgo = new Date(now.getTime() - ONE_DAY_MS);
         const sensorsWithReadings = await Promise.all(
           sensors.map(async (sensor) => {
-            const readings = await fetchReadingsForSensor(sensor._id);
+            const data = await fetchReadingWindow({
+              sensorId: sensor._id,
+              from: dayAgo.toISOString(),
+              to: now.toISOString(),
+              limit: 2000,
+              order: "asc",
+            });
+            const readings = data.points.map((p) => ({
+              measurement: p.v,
+              measuredAt: new Date(p.t),
+            }));
             return { ...sensor, readings };
           }),
         );
