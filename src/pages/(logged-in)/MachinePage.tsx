@@ -618,8 +618,13 @@ export default function MachinePage() {
   useEffect(() => {
     if (!machineId) return;
     fetchMachineById(machineId)
-      .then(setMachine)
+      .then((res) => {
+        const m = res.machine ?? res;
+        setMachine(m);
+        document.title = `${m.name} — predicTech`;
+      })
       .catch(() => setError("Failed to load machine details."));
+    return () => { document.title = "predicTech"; };
   }, [machineId]);
 
   // Fetch metrics + downtime stats
@@ -695,7 +700,7 @@ export default function MachinePage() {
       {/* header */}
       <div className="flex items-center gap-3 px-6 py-4 bg-blue-400 border-b border-gray-800">
         <span className={`w-2 h-2 rounded-full shrink-0 ${isRunning ? "bg-green-400" : "bg-zinc-500"}`} />
-        <h1 className="text-base font-bold tracking-tight text-white flex-1">
+        <h1 className="text-xl font-bold tracking-tight text-white flex-1">
           {machine ? machine.name : <span className="text-white/50 animate-pulse">Loading…</span>}
         </h1>
         <button onClick={handleExport}
