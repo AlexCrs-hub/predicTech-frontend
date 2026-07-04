@@ -24,6 +24,19 @@ export async function addMachine(machineName: string, maxPower: number, userId: 
   return response.json();
 }
 
+export async function updateMachine(
+  machineId: string,
+  data: { name?: string; maxPowerConsumption?: number; downtimeThreshold?: number },
+) {
+  const response = await fetch(`${API_URLS.BACKEND_URL}/machines/${machineId}`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return response.json();
+}
+
 export async function deleteMachine(machineId: string) {
   const response = await fetch(`${API_URLS.BACKEND_URL}/machines/${machineId}`, {
     method: "DELETE",

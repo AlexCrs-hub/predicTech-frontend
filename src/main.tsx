@@ -16,6 +16,7 @@ function RouteErrorBoundary() {
   );
 }
 import AddMachinePage from "./pages/(logged-in)/AddMachinePage";
+import UpdateMachinePage from "./pages/(logged-in)/UpdateMachinePage";
 import MachinePage from "./pages/(logged-in)/MachinePage";
 import AddReportPage from "./pages/(logged-in)/AddReportPage";
 import ReportsPage from "./pages/(logged-in)/ReportsPage";
@@ -45,6 +46,7 @@ const router = createBrowserRouter([
       { path: "/app", element: <ActiveMachineList /> },
       { path: "/app/active-machines", element: <ActiveMachineList /> },
       { path: "/app/add-machine", element: <AddMachinePage /> },
+      { path: "/app/update-machine", element: <UpdateMachinePage /> },
       { path: "/app/report", element: <AddReportPage /> },
       { path: "/app/reports", element: <ReportsPage /> },
       { path: "/app/overview", element: <OverviewPage /> },
