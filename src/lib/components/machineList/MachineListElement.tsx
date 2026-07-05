@@ -1,7 +1,6 @@
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { Machine } from "./types";
-import { getMachineUtilization } from "@/lib/utils/machineSimulation";
 import { useNotifications } from "@/context/NotificationContext";
 
 type Props = Machine & {
@@ -15,18 +14,15 @@ type Props = Machine & {
 
 type LogState = "idle" | "loading" | "ok" | "error";
 
-// ── Status config ─────────────────────────────────────────────────────────────
-
 const STATE_LABEL: Record<Machine["currentState"], string> = {
   "on":             "Running",
   "idle":           "Idle",
   "in maintenance": "Maintenance",
 };
 
-// Fixed chart palette — independent of machine state
 const CHART = {
-  primary:   "#3b82f6", // blue-500  — utilization / donut / sparkbars
-  idle:      "#94a3b8", // slate-400 — idle bar
+  primary: "#3b82f6",
+  idle:    "#94a3b8",
 };
 
 type Colors = { badge: string; dot: string; stripClass: string; cardClass: string };
@@ -52,24 +48,27 @@ const STATE_COLORS: Record<Machine["currentState"], Colors> = {
   },
 };
 
-// ── Donut ring ────────────────────────────────────────────────────────────────
+// ── Donut ring — shows "—" when no data ──────────────────────────────────────
 
-function DonutRing({ pct, color }: { pct: number; color: string }) {
-  const r = 42;
+function DonutRing({ pct, color }: { pct: number | null; color: string }) {
+  const r    = 42;
   const circ = 2 * Math.PI * r;
-  const filled = (Math.min(pct, 100) / 100) * circ;
+  const filled = pct != null ? (Math.min(pct, 100) / 100) * circ : 0;
   return (
     <svg width="100" height="100" viewBox="0 0 100 100">
       <circle cx="50" cy="50" r={r} fill="none" strokeWidth="9" stroke="#e5e7eb" className="dark:[stroke:#27272a]" />
-      <circle cx="50" cy="50" r={r} fill="none" stroke={color} strokeWidth="9" strokeLinecap="round"
-        strokeDasharray={`${filled} ${circ - filled}`} transform="rotate(-90 50 50)" />
-      <text x="50" y="46" textAnchor="middle" fontSize="17" fontWeight="800" fill={color}>{pct}%</text>
+      {pct != null && (
+        <circle cx="50" cy="50" r={r} fill="none" stroke={color} strokeWidth="9" strokeLinecap="round"
+          strokeDasharray={`${filled} ${circ - filled}`} transform="rotate(-90 50 50)" />
+      )}
+      <text x="50" y="46" textAnchor="middle" fontSize={pct != null ? "17" : "20"} fontWeight="800"
+        fill={pct != null ? color : "#9ca3af"}>
+        {pct != null ? `${pct}%` : "—"}
+      </text>
       <text x="50" y="61" textAnchor="middle" fontSize="9" fill="#9ca3af">Utilization</text>
     </svg>
   );
 }
-
-// ── Stat cell ─────────────────────────────────────────────────────────────────
 
 function StatCell({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
@@ -79,8 +78,6 @@ function StatCell({ label, value, color }: { label: string; value: string; color
     </div>
   );
 }
-
-// ── Stat bar ──────────────────────────────────────────────────────────────────
 
 function StatBar({ label, pct, color }: { label: string; pct: number; color: string }) {
   return (
@@ -103,10 +100,8 @@ export default function MachineListElement({
   onStart, onStop, maintenanceSince, intervalActive,
   utilizationPct, realCycles,
 }: Props) {
-  const sim        = getMachineUtilization(_id);
-  const runtimePct = utilizationPct != null ? Math.round(utilizationPct) : sim.runtimePct;
-  const idlePct    = utilizationPct != null ? Math.max(0, Math.round(100 - utilizationPct)) : sim.idlePct;
-  const cyclesVal  = realCycles ?? sim.cycles;
+  const runtimePct = utilizationPct != null ? Math.round(utilizationPct) : null;
+  const idlePct    = utilizationPct != null ? Math.max(0, Math.round(100 - utilizationPct)) : null;
   const colors     = STATE_COLORS[currentState] ?? STATE_COLORS["idle"];
   const { reports } = useNotifications();
   const openTickets = reports.filter((r) => r.machineId === _id && r.status !== "fixed");
@@ -131,7 +126,6 @@ export default function MachineListElement({
 
   const fmt = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
-  // Power bar
   const powerPct = liveKw > 0 && maxPowerConsumption
     ? Math.min(100, (liveKw / maxPowerConsumption) * 100)
     : 0;
@@ -168,7 +162,7 @@ export default function MachineListElement({
           : colors.cardClass
       }`}>
 
-        {/* top accent strip — state color */}
+        {/* top accent strip */}
         <div className={`h-1.5 w-full ${openTickets.length > 0 ? "bg-amber-400" : colors.stripClass}`} />
 
         {/* header */}
@@ -177,12 +171,12 @@ export default function MachineListElement({
           <div className="flex items-center gap-1.5 shrink-0">
             {openTickets.length > 0 && (
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-500 border border-yellow-300 dark:border-yellow-700">
-                🎫 {openTickets.length}
+                {openTickets.length} ticket{openTickets.length !== 1 ? "s" : ""}
               </span>
             )}
             {currentState === "in maintenance" && maintenanceSince && (
               <span className="text-[10px] font-mono font-bold text-blue-600 dark:text-blue-400">
-                ⏱ {fmt(elapsed)}
+                {fmt(elapsed)}
               </span>
             )}
             <span className={`flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${colors.badge}`}>
@@ -196,14 +190,22 @@ export default function MachineListElement({
         <div className="flex items-center gap-4 px-5 py-4">
           <DonutRing pct={runtimePct} color={CHART.primary} />
           <div className="flex-1 flex flex-col gap-2">
-            <StatBar label="Idle" pct={idlePct} color={CHART.idle} />
+            {idlePct != null && <StatBar label="Idle" pct={idlePct} color={CHART.idle} />}
           </div>
         </div>
 
         {/* 2-column stat row */}
         <div className="flex border-t border-gray-100 dark:border-zinc-800/60 divide-x divide-gray-100 dark:divide-zinc-800/60">
-          <StatCell label="Utilization" value={`${runtimePct}%`} color={CHART.primary} />
-          <StatCell label="Cycles"      value={String(cyclesVal)} color="#6b7280" />
+          <StatCell
+            label="Utilization"
+            value={runtimePct != null ? `${runtimePct}%` : "—"}
+            color={runtimePct != null ? CHART.primary : "#9ca3af"}
+          />
+          <StatCell
+            label="Cycles"
+            value={realCycles != null ? String(realCycles) : "—"}
+            color={realCycles != null ? "#6b7280" : "#9ca3af"}
+          />
         </div>
 
         {/* power footer */}
@@ -237,7 +239,7 @@ export default function MachineListElement({
           </div>
         )}
 
-        {/* work interval logging — does not change machine state, only records operator activity */}
+        {/* work interval logging */}
         {currentState !== "in maintenance" && (
           <div className="flex items-center gap-1.5 px-4 py-2.5 border-t border-gray-100 dark:border-zinc-800/60">
             {!intervalActive && onStart &&

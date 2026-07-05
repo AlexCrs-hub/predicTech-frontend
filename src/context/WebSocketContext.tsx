@@ -1,4 +1,4 @@
-import React, { createContext, useState, useRef, useEffect, useContext } from "react";
+import React, { createContext, useState, useEffect, useContext } from "react";
 import { API_URLS } from "@/lib/constants/ApiUrls";
 
 interface MachineStatePayload {
@@ -10,14 +10,6 @@ interface MachineStatePayload {
   stateChangedAt?: string;
 }
 
-interface LiveReading {
-  machineId: string;
-  sensorName: string;
-  normalizedName?: string;
-  value: number;
-  unit?: string;
-  role?: string;
-}
 
 interface WebSocketContextType {
   readings: string;
@@ -60,6 +52,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           if (!r.machineId || Number.isNaN(value)) continue;
 
           if (
+            r.role === "power" ||
             sensorName === "power" ||
             sensorName === "kw" ||
             sensorName.includes("power")

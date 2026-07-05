@@ -1,89 +1,42 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { useNotifications, Report, ReportStatus } from "@/context/NotificationContext";
 import { fetchAllMachines } from "@/lib/api/machineApi";
 import { Machine } from "@/lib/components/machineList/types";
-import { getMachineUtilization } from "@/lib/utils/machineSimulation";
 import { useWebSocket } from "@/context/WebSocketContext";
-import { downloadCsv } from "@/lib/utils/exportCsv";
+import { fetchSensorsByMachine } from "@/lib/api/sensorApi";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Cell, LineChart, Line,
+  fetchReadingWindow, fetchPowerTimeseries,
+  WindowPoint, TimeseriesPoint,
+} from "@/lib/api/readingWindowApi";
+import {
+  XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, LineChart, Line,
 } from "recharts";
-import { Download } from "lucide-react";
 
-// ── Period options ────────────────────────────────────────────────────────────
-const PERIODS = [
-  { label: "1 day",   hours: 24   },
-  { label: "7 days",  hours: 168  },
-  { label: "1 month", hours: 720  },
+const ENERGY_RATE = 0.18; // SAR/kWh
+const TZ = "Asia/Riyadh";
+const fmtTime = (d: Date) =>
+  d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: TZ });
+
+const WINDOW_PRESETS = [
+  { label: "5m",  secs: 300   },
+  { label: "15m", secs: 900   },
+  { label: "1h",  secs: 3600  },
+  { label: "6h",  secs: 21600 },
 ] as const;
-type Period = typeof PERIODS[number];
+type WindowPreset = typeof WINDOW_PRESETS[number];
 
-// ── Cost chart periods ────────────────────────────────────────────────────────
-const COST_PERIODS = [
-  { label: "1 day",   days: 1  },
-  { label: "7 days",  days: 7  },
-  { label: "1 month", days: 30 },
+type LivePoint = { t: string; v: number };
+
+const RANGE_OPTS = [
+  { label: "1h",  hours: 1    },
+  { label: "24h", hours: 24   },
+  { label: "7d",  hours: 168  },
+  { label: "30d", hours: 720  },
+  { label: "1y",  hours: 8760 },
 ] as const;
-type CostPeriod = typeof COST_PERIODS[number];
-
-function buildCostData(machines: Machine[], days: number): { date: string; cost: number }[] {
-  const today = new Date();
-  return Array.from({ length: days }, (_, i) => {
-    const d = new Date(today);
-    d.setDate(today.getDate() - (days - 1 - i));
-    const label = days === 1
-      ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-      : d.toLocaleDateString([], { month: "short", day: "numeric" });
-    // deterministic daily cost: sum utilisation-based kWh per machine
-    const dailyCost = machines.reduce((sum, m) => {
-      const u = getMachineUtilization(m._id);
-      // seed per machine+day so values are stable but vary by day
-      const seed = (u.runtimePct + i * 3 + m._id.charCodeAt(0)) % 20;
-      const kwhDay = (u.runtimePct / 100) * (m.maxPowerConsumption ?? 10) * 24 * (0.85 + seed * 0.01);
-      return sum + kwhDay * ENERGY_RATE;
-    }, 0);
-    return { date: label, cost: +dailyCost.toFixed(2) };
-  });
-}
-
-// ── Status bar definitions ────────────────────────────────────────────────────
-const STATUS_BARS = [
-  { key: "cutting",     label: "Cutting",       color: "#3b82f6" },
-  { key: "reloading",   label: "Reloading",     color: "#a855f7" },
-  { key: "idle",        label: "Idle",          color: "#f59e0b" },
-  { key: "plannedDT",   label: "Planned DT",    color: "#6b7280" },
-  { key: "unplannedDT", label: "Unplanned DT",  color: "#f97316" },
-] as const;
-type StatusKey = typeof STATUS_BARS[number]["key"];
-
-function computeHours(machineId: string, totalHours: number): Record<StatusKey, number> {
-  const u = getMachineUtilization(machineId);
-  const runtime   = (u.runtimePct / 100) * totalHours;
-  const cutting   = (u.cuttingPct / 100) * runtime;
-  const reloading = runtime * 0.12;
-  const idle      = Math.max(0, runtime - cutting - reloading);
-  const dt        = totalHours - runtime;
-  return {
-    cutting:     +cutting.toFixed(1),
-    reloading:   +reloading.toFixed(1),
-    idle:        +idle.toFixed(1),
-    plannedDT:   +(dt * 0.65).toFixed(1),
-    unplannedDT: +(dt * 0.35).toFixed(1),
-  };
-}
-
-// ── Downtime causes (bar chart) ───────────────────────────────────────────────
-const DOWNTIME_CAUSES = [
-  { name: "Tool change",   minutes: 18, pct: 38, color: "#ef4444" },
-  { name: "Material wait", minutes: 12, pct: 25, color: "#f97316" },
-  { name: "Micro-stops",   minutes: 9,  pct: 19, color: "#eab308" },
-  { name: "Setup",         minutes: 5,  pct: 11, color: "#60a5fa" },
-  { name: "Other",         minutes: 3,  pct: 6,  color: "#6b7280" },
-];
-
-const ENERGY_RATE = 0.15; // €/kWh
+type RangeOpt = typeof RANGE_OPTS[number];
 
 // ── Report card helpers ───────────────────────────────────────────────────────
 const STATUS_LABEL: Record<ReportStatus, string> = {
@@ -135,19 +88,6 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
   );
 }
 
-function ExportBtn({ onClick }: { onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="flex items-center gap-1 text-xs text-gray-400 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors px-2 py-1 rounded border border-gray-200 dark:border-zinc-700 hover:border-blue-300 dark:hover:border-blue-700"
-    >
-      <Download className="size-3" />
-      Export
-    </button>
-  );
-}
-
-// ── KPI tile ─────────────────────────────────────────────────────────────────
 function KpiTile({
   label, value, sub, accent,
 }: { label: string; value: string; sub?: string; accent?: string }) {
@@ -164,43 +104,302 @@ function KpiTile({
   );
 }
 
-// ── Insights ─────────────────────────────────────────────────────────────────
-type InsightType = "warning" | "good" | "info";
-type Insight = { text: string; type: InsightType };
+// ── Fetch power sensor ID for each machine ────────────────────────────────────
+function useAllPowerSensorIds(machines: Machine[]): Map<string, string> {
+  const [sensorMap, setSensorMap] = useState<Map<string, string>>(new Map());
+  useEffect(() => {
+    if (machines.length === 0) return;
+    Promise.all(
+      machines.map((m) =>
+        fetchSensorsByMachine(m._id)
+          .then((sensors: unknown) => {
+            const list = Array.isArray(sensors) ? sensors : [];
+            const ps = list.find((s: any) => {
+              const name = String(s.normalizedName || s.name || "").toLowerCase();
+              return s.role === "power" || name.includes("power") || name === "kw";
+            });
+            return ps ? ([m._id, ps._id] as [string, string]) : null;
+          })
+          .catch(() => null)
+      )
+    ).then((results) => {
+      const map = new Map<string, string>();
+      for (const r of results) if (r) map.set(r[0], r[1]);
+      setSensorMap(map);
+    });
+  }, [machines.length]);
+  return sensorMap;
+}
 
-const INSIGHT_STYLE: Record<InsightType, { bar: string; dot: string; text: string }> = {
-  warning: { bar: "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800", dot: "bg-amber-400", text: "text-amber-700 dark:text-amber-400" },
-  good:    { bar: "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800",   dot: "bg-green-500",  text: "text-green-700 dark:text-green-400"  },
-  info:    { bar: "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800",       dot: "bg-blue-400",  text: "text-blue-700 dark:text-blue-400"    },
-};
+// ── Unified interactive chart — power (kW) or cost (SAR/h) ───────────────────
+// Identical UX to InteractivePowerChart in machine details.
+// mode="cost" multiplies every kW value by ENERGY_RATE to show SAR/h.
+function OverviewInteractiveChart({
+  machines,
+  sensorMap,
+  mode,
+}: {
+  machines: Machine[];
+  sensorMap: Map<string, string>;
+  mode: "power" | "cost";
+}) {
+  const { readings } = useWebSocket();
+  const [machineFilter, setMachineFilter] = useState("all");
+  const [preset, setPreset]         = useState<WindowPreset>(WINDOW_PRESETS[0]);
+  const [viewMode, setViewMode]     = useState<"live" | "hist">("live");
+  const [histToMs, setHistToMs]     = useState(0);
+  const [points, setPoints]         = useState<LivePoint[]>([]);
+  const [loading, setLoading]       = useState(false);
+  const bufferRef                   = useRef<LivePoint[]>([]);
+  const latestKwRef                 = useRef<Map<string, number>>(new Map());
 
-function InsightBar({ insights }: { insights: Insight[] }) {
-  if (insights.length === 0) return null;
-  return (
-    <div className="flex flex-col gap-1.5 mt-1">
-      {insights.map((ins, i) => {
-        const s = INSIGHT_STYLE[ins.type];
-        return (
-          <div key={i} className={`flex items-start gap-2 rounded-lg border px-3 py-2 ${s.bar}`}>
-            <span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
-            <span className={`text-xs leading-snug ${s.text}`}>{ins.text}</span>
-          </div>
+  const unit        = mode === "cost" ? "SAR/h" : "kW";
+  const lineColor   = mode === "cost" ? "#10b981" : "#3b82f6";
+  const tooltipLabel = mode === "cost" ? "Cost" : "Power";
+  const valueAccent = mode === "cost"
+    ? "text-emerald-600 dark:text-emerald-400"
+    : "text-blue-600 dark:text-blue-400";
+  const decimals    = mode === "cost" ? 4 : 2;
+  const toV         = (kw: number) => +(kw * (mode === "cost" ? ENERGY_RATE : 1)).toFixed(decimals);
+
+  const load = useCallback(async (fromMs: number, toMs: number) => {
+    setLoading(true);
+    try {
+      let pts: LivePoint[];
+      if (machineFilter === "all") {
+        const sensorIds = Array.from(sensorMap.values());
+        if (sensorIds.length === 0) return;
+        const results = await Promise.all(
+          sensorIds.map((sid) =>
+            fetchReadingWindow({
+              sensorId: sid,
+              from: new Date(fromMs).toISOString(),
+              to: new Date(toMs).toISOString(),
+              limit: 2000,
+              order: "asc",
+            }).catch((): { points: WindowPoint[] } => ({ points: [] }))
+          )
         );
-      })}
+        const bySecond = new Map<number, number>();
+        for (const res of results) {
+          for (const p of res.points) {
+            const bucket = Math.round(p.t / 1000) * 1000;
+            bySecond.set(bucket, (bySecond.get(bucket) ?? 0) + p.v);
+          }
+        }
+        pts = Array.from(bySecond.entries())
+          .sort(([a], [b]) => a - b)
+          .map(([t, kw]) => ({ t: fmtTime(new Date(t)), v: toV(kw) }));
+      } else {
+        const sensorId = sensorMap.get(machineFilter);
+        if (!sensorId) return;
+        const data = await fetchReadingWindow({
+          sensorId,
+          from: new Date(fromMs).toISOString(),
+          to: new Date(toMs).toISOString(),
+          limit: 2000,
+          order: "asc",
+        });
+        pts = data.points.map((p) => ({ t: fmtTime(new Date(p.t)), v: toV(p.v) }));
+      }
+      bufferRef.current = pts;
+      setPoints(pts);
+    } catch { /* keep empty */ }
+    finally { setLoading(false); }
+  }, [machineFilter, sensorMap, mode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (sensorMap.size === 0) return;
+    if (viewMode === "live") {
+      const to = Date.now();
+      load(to - preset.secs * 1000, to);
+    } else if (histToMs > 0) {
+      load(histToMs - preset.secs * 1000, histToMs);
+    }
+  }, [sensorMap.size, preset, viewMode, histToMs, load]);
+
+  useEffect(() => {
+    if (viewMode !== "live" || !readings) return;
+    try {
+      const parsed = JSON.parse(readings);
+      const powerReadings = (parsed.readings || []).filter((r: any) => {
+        const name = String(r.sensorName || r.normalizedName || "").toLowerCase();
+        return name.includes("power") || name === "kw";
+      });
+      if (powerReadings.length === 0) return;
+
+      for (const r of powerReadings) {
+        if (r.machineId) latestKwRef.current.set(r.machineId, Number(r.value));
+      }
+
+      let totalKw: number;
+      if (machineFilter === "all") {
+        totalKw = Array.from(latestKwRef.current.values()).reduce((s, v) => s + v, 0);
+      } else {
+        if (!latestKwRef.current.has(machineFilter)) return;
+        totalKw = latestKwRef.current.get(machineFilter)!;
+      }
+
+      const ts = parsed.measuredAt ? new Date(parsed.measuredAt) : new Date();
+      const point: LivePoint = { t: fmtTime(ts), v: toV(totalKw) };
+      const buf  = bufferRef.current;
+      const next = buf.length >= preset.secs ? [...buf.slice(1), point] : [...buf, point];
+      bufferRef.current = next;
+      setPoints([...next]);
+    } catch {}
+  }, [readings, machineFilter, viewMode, preset, mode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const panLeft = () => {
+    const currentTo = viewMode === "live" ? Date.now() : histToMs;
+    setViewMode("hist");
+    setHistToMs(currentTo - preset.secs * 1000);
+  };
+  const panRight = () => {
+    const newTo = histToMs + preset.secs * 1000;
+    if (newTo >= Date.now() - 10_000) setViewMode("live");
+    else setHistToMs(newTo);
+  };
+  const goLive = () => {
+    bufferRef.current = [];
+    latestKwRef.current = new Map();
+    setPoints([]);
+    setViewMode("live");
+  };
+
+  const latest = viewMode === "live" ? (points[points.length - 1]?.v ?? null) : null;
+
+  return (
+    <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm p-5">
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        {/* machine selector */}
+        <select
+          className="text-sm border border-gray-200 dark:border-zinc-700 rounded-md px-2 py-1 bg-white dark:bg-zinc-900 text-gray-700 dark:text-zinc-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          value={machineFilter}
+          onChange={(e) => { setMachineFilter(e.target.value); goLive(); }}
+        >
+          <option value="all">All machines</option>
+          {machines.map((m) => (
+            <option key={m._id} value={m._id}>{m.name}</option>
+          ))}
+        </select>
+
+        {latest !== null && (
+          <div className="flex items-baseline gap-1 mr-2">
+            <span className={`text-2xl font-extrabold tabular-nums leading-none ${valueAccent}`}>
+              {latest.toFixed(decimals)}
+            </span>
+            <span className="text-sm text-gray-400 dark:text-zinc-500">{unit}</span>
+          </div>
+        )}
+
+        {/* window presets */}
+        <div className="flex rounded-md border border-gray-200 dark:border-zinc-700 overflow-hidden">
+          {WINDOW_PRESETS.map((p) => (
+            <button key={p.label} onClick={() => setPreset(p)}
+              className={`px-2.5 py-1 text-[10px] transition-colors ${
+                preset.label === p.label
+                  ? "bg-gray-900 dark:bg-zinc-100 text-white dark:text-zinc-900 font-semibold"
+                  : "text-gray-500 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800"
+              }`}>{p.label}</button>
+          ))}
+        </div>
+
+        {/* pan */}
+        <button onClick={panLeft}
+          className="w-7 h-7 rounded-md border border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 text-base flex items-center justify-center hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors">
+          ‹
+        </button>
+        <button onClick={panRight} disabled={viewMode === "live"}
+          className="w-7 h-7 rounded-md border border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 text-base flex items-center justify-center hover:bg-gray-100 dark:hover:bg-zinc-800 disabled:opacity-30 transition-colors">
+          ›
+        </button>
+
+        {/* live indicator */}
+        {viewMode === "live" ? (
+          <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-[10px] font-semibold">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+            Live
+          </span>
+        ) : (
+          <button onClick={goLive}
+            className="px-2.5 py-0.5 rounded-full border border-gray-200 dark:border-zinc-700 text-[10px] text-gray-500 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors">
+            Go Live
+          </button>
+        )}
+
+        {loading && (
+          <span className="text-[10px] text-gray-400 dark:text-zinc-500 animate-pulse ml-1">Loading…</span>
+        )}
+      </div>
+
+      {points.length === 0 ? (
+        <div className="flex items-center justify-center h-[220px] text-sm text-gray-400 dark:text-zinc-500 italic">
+          {loading ? "Loading…" : sensorMap.size === 0 ? "Loading sensors…" : "No data for this window"}
+        </div>
+      ) : (
+        <ResponsiveContainer width="100%" height={220}>
+          <LineChart data={points} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" className="dark:[stroke:#27272a]" />
+            <XAxis dataKey="t" tick={{ fontSize: 9, fill: "#9ca3af" }} interval="preserveStartEnd" axisLine={false} tickLine={false} />
+            <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={56} unit={` ${unit}`} domain={["auto", "auto"]} />
+            <Tooltip
+              formatter={(v: number) => [`${v.toFixed(decimals)} ${unit}`, tooltipLabel]}
+              contentStyle={{ fontSize: 11, borderRadius: 8, border: "1px solid #e5e7eb" }}
+            />
+            <Line type="monotone" dataKey="v" stroke={lineColor} strokeWidth={2} dot={false} isAnimationActive={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      )}
     </div>
   );
 }
 
-// ── Page ─────────────────────────────────────────────────────────────────────
+// ── Aggregate energy cost hook (for cost KPI tiles only) ──────────────────────
+function useAggregateCost(
+  machines: Machine[],
+  windowHours: number,
+): { total: number; loading: boolean } {
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (machines.length === 0) return;
+    const gran: "hour" | "day" = windowHours <= 720 ? "hour" : "day";
+    const to   = new Date();
+    const from = new Date(to.getTime() - windowHours * 3_600_000);
+    const durH = gran === "day" ? 24 : 1;
+
+    setLoading(true);
+    Promise.all(
+      machines.map((m) =>
+        fetchPowerTimeseries({
+          machineId: m._id,
+          from: from.toISOString(),
+          to: to.toISOString(),
+          granularity: gran,
+        }).catch((): { points: TimeseriesPoint[] } => ({ points: [] }))
+      )
+    )
+      .then((results) => {
+        let sum = 0;
+        for (const res of results)
+          for (const p of res.points)
+            sum += p.avgPowerKw * durH * ENERGY_RATE;
+        setTotal(+sum.toFixed(2));
+      })
+      .finally(() => setLoading(false));
+  }, [machines.length, windowHours]);
+
+  return { total, loading };
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
 export default function OverviewPage() {
   const [machines, setMachines] = useState<Machine[]>([]);
   const [machineStatus, setMachineStatus] = useState<"loading" | "ok" | "auth" | "empty" | "error">("loading");
-  const [period, setPeriod] = useState<Period>(PERIODS[0]);
-  const [selectedMachine, setSelectedMachine] = useState<string>("all");
-  const [costPeriod, setCostPeriod] = useState<CostPeriod>(COST_PERIODS[1]);
-  const [dtFilter, setDtFilter] = useState("");
+  const [rangeOpt, setRangeOpt] = useState<RangeOpt>(RANGE_OPTS[2]);
   const { reports } = useNotifications();
-  const { liveKw } = useWebSocket();
+  const { liveKw, machineStates } = useWebSocket();
 
   useEffect(() => {
     fetchAllMachines()
@@ -213,157 +412,32 @@ export default function OverviewPage() {
       .catch(() => setMachineStatus("error"));
   }, []);
 
+  const sensorMap = useAllPowerSensorIds(machines);
   const activeReports = reports.filter((r) => r.status !== "fixed");
 
-  const leaderboard = [...machines]
-    .map((m) => ({ ...m, utilPct: getMachineUtilization(m._id).runtimePct }))
-    .sort((a, b) => b.utilPct - a.utilPct);
+  // Live KPI values — sourced directly from SSE liveKw
+  const totalKw       = machines.reduce((s, m) => s + (liveKw[m._id] || 0), 0);
+  const hourlyCostSAR = totalKw * ENERGY_RATE;
+  const dailyCostSAR  = hourlyCostSAR * 24;
 
-  const sourceMachines =
-    selectedMachine === "all"
-      ? machines
-      : machines.filter((m) => m._id === selectedMachine);
+  // Machine online count from live machine-state events
+  const hasStateData  = machines.some((m) => machineStates[m._id] !== undefined);
+  const onlineCount   = machines.filter((m) => machineStates[m._id]?.state === "on").length;
 
-  const chartData = STATUS_BARS.map(({ key, label, color }) => {
-    const total = sourceMachines.reduce(
-      (sum, m) => sum + computeHours(m._id, period.hours)[key],
-      0,
-    );
-    return { name: label, value: +total.toFixed(1), color };
-  });
-
-  // Power & cost KPIs — fall back to simulated values when WebSocket is silent
-  const wsKwTotal = machines.reduce((sum: number, m: Machine) => sum + (liveKw[m._id] || 0), 0);
-  const totalKw = wsKwTotal > 0
-    ? wsKwTotal
-    : machines.reduce((sum: number, m: Machine) => {
-        const u = getMachineUtilization(m._id);
-        return sum + +(((u.runtimePct / 100) * (m.maxPowerConsumption ?? 10) * 0.75).toFixed(1));
-      }, 0);
-  const hourlyCostEur = totalKw * ENERGY_RATE;
-  const dailyCostEur  = hourlyCostEur * 24;
-
-  const costData = buildCostData(machines, costPeriod.days);
-  const totalCostInPeriod = costData.reduce((s, d) => s + d.cost, 0);
-
-  // Export helpers
-  const exportCostChart = () => {
-    downloadCsv(`energy_cost_${costPeriod.days}d.csv`, [
-      ["Date", "Cost (EUR)"],
-      ...costData.map((d) => [d.date, d.cost]),
-    ]);
-  };
-
-  const exportTimeBreakdown = () => {
-    downloadCsv("time_breakdown.csv", [
-      ["Category", "Hours"],
-      ...chartData.map((d) => [d.name, d.value]),
-    ]);
-  };
-
-  const exportLeaderboard = () => {
-    downloadCsv("utilization_leaderboard.csv", [
-      ["Machine", "Runtime %", "Cutting %", "Cycles"],
-      ...leaderboard.map((m) => {
-        const u = getMachineUtilization(m._id);
-        return [m.name, u.runtimePct, u.cuttingPct, u.cycles];
-      }),
-    ]);
-  };
-
-  const exportDowntimeCauses = () => {
-    downloadCsv("downtime_causes.csv", [
-      ["Cause", "Minutes", "Percent"],
-      ...DOWNTIME_CAUSES.map((d) => [d.name, d.minutes, d.pct]),
-    ]);
-  };
-
-  // ── Insights computation ──────────────────────────────────────────────────
-  const totalHours = Math.max(1, sourceMachines.length * period.hours);
-  const cuttingH   = chartData.find((d) => d.name === "Cutting")?.value      ?? 0;
-  const idleH      = chartData.find((d) => d.name === "Idle")?.value          ?? 0;
-  const unplannedH = chartData.find((d) => d.name === "Unplanned DT")?.value  ?? 0;
-  const plannedH   = chartData.find((d) => d.name === "Planned DT")?.value    ?? 0;
-  const cPct = (cuttingH   / totalHours) * 100;
-  const iPct = (idleH      / totalHours) * 100;
-  const uPct = (unplannedH / totalHours) * 100;
-
-  const timeInsights: Insight[] = [];
-  if (cPct > 55) timeInsights.push({ text: `Machines are actively cutting ${cPct.toFixed(0)}% of the period — excellent throughput`, type: "good" });
-  if (iPct > 25) timeInsights.push({ text: `Idle time is ${iPct.toFixed(0)}% of the period — consider optimizing shift scheduling`, type: "warning" });
-  if (uPct > 15) timeInsights.push({ text: `Unplanned downtime at ${uPct.toFixed(0)}% — preventive maintenance may reduce this`, type: "warning" });
-  if (unplannedH > plannedH * 2 && plannedH > 0) timeInsights.push({ text: `Unplanned downtime is more than twice the planned rate`, type: "warning" });
-  if (uPct < 5 && cPct > 45) timeInsights.push({ text: `Low unplanned downtime this period — operations are well under control`, type: "good" });
-
-  const leaderboardInsights: Insight[] = (() => {
-    if (leaderboard.length === 0) return [];
-    const ins: Insight[] = [];
-    const avg   = leaderboard.reduce((s, m) => s + m.utilPct, 0) / leaderboard.length;
-    const worst = leaderboard[leaderboard.length - 1];
-    const best  = leaderboard[0];
-    const spread = best.utilPct - worst.utilPct;
-
-    if (worst.utilPct < 40)
-      ins.push({ text: `${worst.name} has low utilization (${worst.utilPct}%) — consider rebalancing load`, type: "warning" });
-    else if (leaderboard.every((m) => m.utilPct >= 65))
-      ins.push({ text: `All machines above 65% utilization — fleet is operating efficiently`, type: "good" });
-
-    if (avg > 82)
-      ins.push({ text: `Fleet average utilization is ${avg.toFixed(0)}% — monitor for overloading`, type: "warning" });
-    else if (avg >= 60 && avg <= 82)
-      ins.push({ text: `Fleet average utilization is ${avg.toFixed(0)}% — healthy balance`, type: "good" });
-
-    if (spread > 35 && leaderboard.length > 1)
-      ins.push({ text: `${best.name} (${best.utilPct}%) vs ${worst.name} (${worst.utilPct}%) — large utilization gap, consider rebalancing`, type: "info" });
-
-    return ins;
-  })();
-
-  const downtimeInsights: Insight[] = (() => {
-    const ins: Insight[] = [];
-    const sorted = [...DOWNTIME_CAUSES].sort((a, b) => b.pct - a.pct);
-    if (sorted.length === 0) return ins;
-    const top = sorted[0];
-    if (top.pct > 35)
-      ins.push({ text: `"${top.name}" is the dominant downtime cause at ${top.pct}% — addressing it would have the highest impact`, type: "warning" });
-    const other = DOWNTIME_CAUSES.find((c) => c.name === "Other");
-    if (other && other.pct > 15)
-      ins.push({ text: `${other.pct}% of downtime is unclassified — log specific reasons to improve tracking`, type: "info" });
-    if (sorted.length >= 2) {
-      const topTwo = sorted[0].pct + sorted[1].pct;
-      if (topTwo > 60)
-        ins.push({ text: `"${sorted[0].name}" and "${sorted[1].name}" together account for ${topTwo}% of downtime`, type: "info" });
-    }
-    return ins;
-  })();
+  // Historical cost aggregates for KPI tiles
+  const { total: monthlySAR, loading: monthlyLoading } = useAggregateCost(machines, 720);
+  const avgHourlySAR = monthlySAR > 0 ? monthlySAR / 720 : 0;
+  const { total: rangeSAR,   loading: rangeLoading   } = useAggregateCost(machines, rangeOpt.hours);
 
   return (
     <div className="w-full p-6 flex flex-col gap-6 bg-gray-50 dark:bg-zinc-950 min-h-screen">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-zinc-50">Overview</h1>
-        <div className="flex items-center gap-3">
-          <div className="flex rounded-md border border-gray-200 dark:border-zinc-700 overflow-hidden">
-            {PERIODS.map((p) => (
-              <button
-                key={p.label}
-                className={`px-3 py-1.5 text-sm transition-colors ${
-                  period.label === p.label
-                    ? "bg-gray-900 dark:bg-zinc-100 text-white dark:text-zinc-900 font-medium"
-                    : "bg-white dark:bg-zinc-900 text-gray-600 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800"
-                }`}
-                onClick={() => setPeriod(p)}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-          <Link to="/app/bigscreen" className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
-            Big screen →
-          </Link>
-        </div>
+        <Link to="/app/bigscreen" className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+          Big screen →
+        </Link>
       </div>
 
-      {/* ── status banners ── */}
       {machineStatus === "loading" && (
         <p className="text-sm text-gray-400 dark:text-zinc-500 animate-pulse">Loading machines…</p>
       )}
@@ -387,8 +461,12 @@ export default function OverviewPage() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <KpiTile
           label="Machines"
-          value={String(machines.length)}
-          sub={`${activeReports.length} open ticket${activeReports.length !== 1 ? "s" : ""}`}
+          value={hasStateData ? `${onlineCount} / ${machines.length}` : String(machines.length)}
+          sub={
+            hasStateData
+              ? `online · ${activeReports.length} open ticket${activeReports.length !== 1 ? "s" : ""}`
+              : `${activeReports.length} open ticket${activeReports.length !== 1 ? "s" : ""}`
+          }
         />
         <KpiTile
           label="Live Power"
@@ -398,280 +476,125 @@ export default function OverviewPage() {
         />
         <KpiTile
           label="Est. Hourly Cost"
-          value={hourlyCostEur > 0 ? `€${hourlyCostEur.toFixed(2)}` : "€—"}
-          sub={`@€${ENERGY_RATE}/kWh`}
+          value={hourlyCostSAR > 0 ? `SAR ${hourlyCostSAR.toFixed(2)}` : "SAR —"}
+          sub={`@${ENERGY_RATE} SAR/kWh`}
           accent="text-emerald-600 dark:text-emerald-400"
         />
         <KpiTile
           label="Est. Daily Cost"
-          value={dailyCostEur > 0 ? `€${dailyCostEur.toFixed(0)}` : "€—"}
+          value={dailyCostSAR > 0 ? `SAR ${dailyCostSAR.toFixed(0)}` : "SAR —"}
           sub="24 h projection"
           accent="text-emerald-600 dark:text-emerald-400"
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-        {/* ── Left column ── */}
-        <div className="flex flex-col gap-6">
-
-          {/* Time breakdown chart */}
-          <section className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <SectionHeading>Time breakdown — {period.label}</SectionHeading>
-              <div className="flex items-center gap-2 flex-wrap">
-                <ExportBtn onClick={exportTimeBreakdown} />
-                <select
-                  className="text-sm border border-gray-200 dark:border-zinc-700 rounded-md px-2 py-1 bg-white dark:bg-zinc-900 text-gray-700 dark:text-zinc-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  value={selectedMachine}
-                  onChange={(e) => setSelectedMachine(e.target.value)}
-                >
-                  <option value="all">All machines</option>
-                  {machines.map((m) => (
-                    <option key={m._id} value={m._id}>{m.name}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm p-4">
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={chartData} barCategoryGap="30%">
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                  <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
-                  <YAxis
-                    tick={{ fontSize: 11, fill: "#9ca3af" }}
-                    axisLine={false}
-                    tickLine={false}
-                    tickFormatter={(v) => `${v}h`}
-                    width={40}
-                  />
-                  <Tooltip
-                    formatter={(value: number) => [`${value} h`, "Hours"]}
-                    contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e5e7eb" }}
-                    cursor={{ fill: "#f9fafb" }}
-                  />
-                  <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                    {chartData.map((entry) => (
-                      <Cell key={entry.name} fill={entry.color} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-            <InsightBar insights={timeInsights} />
-          </section>
-
-          {/* Utilization leaderboard */}
-          {leaderboard.length > 0 && (
-            <section className="flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <SectionHeading>Utilization leaderboard</SectionHeading>
-                <ExportBtn onClick={exportLeaderboard} />
-              </div>
-              <div className="rounded-xl border border-gray-200 dark:border-zinc-800 overflow-hidden shadow-sm">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 dark:bg-zinc-800 text-xs text-gray-500 dark:text-zinc-400 uppercase">
-                    <tr>
-                      <th className="px-3 py-2 text-left w-8">#</th>
-                      <th className="px-3 py-2 text-left">Machine</th>
-                      <th className="px-3 py-2 text-right">Runtime</th>
-                      <th className="px-3 py-2 text-right">Cutting</th>
-                      <th className="px-3 py-2 text-right">Cycles</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 dark:divide-zinc-800 bg-white dark:bg-zinc-900">
-                    {leaderboard.map((m, i) => {
-                      const u = getMachineUtilization(m._id);
-                      return (
-                        <tr key={m._id} className="hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors">
-                          <td className="px-3 py-2 text-gray-400 dark:text-zinc-600 font-mono">{i + 1}</td>
-                          <td className="px-3 py-2 text-gray-900 dark:text-zinc-100">
-                            <Link to={`/app/machine?machineId=${m._id}`} className="font-medium hover:text-blue-600 dark:hover:text-blue-400">
-                              {m.name}
-                            </Link>
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <div className="w-16 h-1.5 rounded-full bg-gray-100 dark:bg-zinc-700 overflow-hidden">
-                                <div className="h-full bg-green-500 rounded-full" style={{ width: `${u.runtimePct}%` }} />
-                              </div>
-                              <span className="font-semibold tabular-nums text-gray-900 dark:text-zinc-100">{u.runtimePct}%</span>
-                            </div>
-                          </td>
-                          <td className="px-3 py-2 text-right text-gray-600 dark:text-zinc-400 tabular-nums">{u.cuttingPct}%</td>
-                          <td className="px-3 py-2 text-right font-semibold tabular-nums text-gray-900 dark:text-zinc-100">{u.cycles}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              <InsightBar insights={leaderboardInsights} />
-            </section>
-          )}
-        </div>
-
-        {/* ── Right column ── */}
-        <div className="flex flex-col gap-6">
-
-          {/* Downtime causes — bar chart */}
-          <section className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <SectionHeading>Top downtime causes — {period.label}</SectionHeading>
-              <ExportBtn onClick={exportDowntimeCauses} />
-            </div>
-            <input
-              type="text"
-              value={dtFilter}
-              onChange={(e) => setDtFilter(e.target.value)}
-              placeholder="Filter causes…"
-              className="text-sm rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-1.5 text-gray-800 dark:text-zinc-200 placeholder:text-gray-400 dark:placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
-            <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm p-5">
-              <div className="flex flex-col gap-3">
-                {DOWNTIME_CAUSES.filter((c) => c.name.toLowerCase().includes(dtFilter.toLowerCase())).map(({ name, minutes, pct, color }) => {
-                  const scaledMin = Math.round(minutes * (period.hours / 24));
-                  return (
-                    <div key={name} className="flex items-center gap-3">
-                      <span className="w-28 text-sm text-gray-600 dark:text-zinc-400 shrink-0">{name}</span>
-                      <div className="flex-1 h-4 rounded-full bg-gray-100 dark:bg-zinc-800 overflow-hidden">
-                        <div
-                          className="h-full rounded-full transition-all duration-500"
-                          style={{ width: `${pct}%`, backgroundColor: color }}
-                        />
-                      </div>
-                      <span className="text-sm font-semibold text-gray-800 dark:text-zinc-200 w-14 text-right shrink-0 tabular-nums">
-                        {scaledMin} min
-                      </span>
-                      <span className="text-xs text-gray-400 dark:text-zinc-500 w-8 text-right shrink-0 tabular-nums">
-                        {pct}%
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-            <InsightBar insights={downtimeInsights} />
-          </section>
-
-          {/* Maintenance Tickets */}
-          <section className="flex flex-col gap-3">
-            <SectionHeading>
-              Maintenance Tickets
-              <span className="ml-2 text-xs font-normal normal-case text-gray-400 dark:text-zinc-600">
-                ({reports.length} total)
-              </span>
-            </SectionHeading>
-
-            <div className="grid grid-cols-4 gap-2">
-              {(["new", "in_progress", "needs_more_time", "fixed"] as const).map((s) => {
-                const count = reports.filter((r) => r.status === s).length;
-                const cfg = {
-                  new:             { label: "New",         color: "bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-zinc-300 border-gray-200 dark:border-zinc-700" },
-                  in_progress:     { label: "In Progress", color: "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800" },
-                  needs_more_time: { label: "Pending",     color: "bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400 border-orange-200 dark:border-orange-800" },
-                  fixed:           { label: "Fixed",       color: "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800" },
-                }[s];
-                return (
-                  <div key={s} className={`flex flex-col items-center py-2.5 rounded-xl border ${cfg.color}`}>
-                    <span className="text-xl font-extrabold leading-none">{count}</span>
-                    <span className="text-[10px] font-medium mt-1 opacity-80">{cfg.label}</span>
-                  </div>
-                );
-              })}
-            </div>
-
-            {reports.some((r) => r.escalation) && (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800">
-                <span className="text-orange-600 dark:text-orange-400 text-sm">⬆</span>
-                <span className="text-xs text-orange-700 dark:text-orange-400 font-medium">
-                  {reports.filter((r) => r.escalation).length} ticket(s) escalated to management
-                </span>
-              </div>
-            )}
-
-            {activeReports.length === 0 ? (
-              <p className="text-sm text-gray-500 dark:text-zinc-500">No active reports.</p>
-            ) : (
-              activeReports.slice(0, 5).map((r) => <CompactReportCard key={r.id} report={r} />)
-            )}
-            {activeReports.length > 0 && (
-              <Link to="/app/reports" className="text-xs text-blue-600 dark:text-blue-400 hover:underline text-right">
-                View all tickets →
-              </Link>
-            )}
-          </section>
-        </div>
-      </div>
-
-      {/* ── Energy Cost Trend ── */}
+      {/* ── Live power chart ── */}
       <section className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-3">
-            <SectionHeading>Energy cost trend</SectionHeading>
-            {machines.length > 0 && (
-              <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                Total: €{totalCostInPeriod.toFixed(2)}
-              </span>
-            )}
+        <SectionHeading>Live power</SectionHeading>
+        <OverviewInteractiveChart machines={machines} sensorMap={sensorMap} mode="power" />
+      </section>
+
+      {/* ── Maintenance Tickets ── */}
+      <section className="flex flex-col gap-3">
+        <SectionHeading>
+          Maintenance Tickets
+          <span className="ml-2 text-xs font-normal normal-case text-gray-400 dark:text-zinc-600">
+            ({reports.length} total)
+          </span>
+        </SectionHeading>
+
+        <div className="grid grid-cols-4 gap-2">
+          {(["new", "in_progress", "needs_more_time", "fixed"] as const).map((s) => {
+            const count = reports.filter((r) => r.status === s).length;
+            const cfg = {
+              new:             { label: "New",         color: "bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-zinc-300 border-gray-200 dark:border-zinc-700" },
+              in_progress:     { label: "In Progress", color: "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800" },
+              needs_more_time: { label: "Pending",     color: "bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400 border-orange-200 dark:border-orange-800" },
+              fixed:           { label: "Fixed",       color: "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800" },
+            }[s];
+            return (
+              <div key={s} className={`flex flex-col items-center py-2.5 rounded-xl border ${cfg.color}`}>
+                <span className="text-xl font-extrabold leading-none">{count}</span>
+                <span className="text-[10px] font-medium mt-1 opacity-80">{cfg.label}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        {reports.some((r) => r.escalation) && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800">
+            <span className="text-orange-600 dark:text-orange-400 text-sm">⬆</span>
+            <span className="text-xs text-orange-700 dark:text-orange-400 font-medium">
+              {reports.filter((r) => r.escalation).length} ticket(s) escalated to management
+            </span>
           </div>
-          <div className="flex items-center gap-2">
-            <ExportBtn onClick={exportCostChart} />
-            <div className="flex rounded-md border border-gray-200 dark:border-zinc-700 overflow-hidden">
-              {COST_PERIODS.map((p) => (
+        )}
+
+        {activeReports.length === 0 ? (
+          <p className="text-sm text-gray-500 dark:text-zinc-500">No active reports.</p>
+        ) : (
+          activeReports.slice(0, 5).map((r) => <CompactReportCard key={r.id} report={r} />)
+        )}
+        {activeReports.length > 0 && (
+          <Link to="/app/reports" className="text-xs text-blue-600 dark:text-blue-400 hover:underline text-right">
+            View all tickets →
+          </Link>
+        )}
+      </section>
+
+      {/* ── Energy Costs ── */}
+      <section className="flex flex-col gap-4">
+        <SectionHeading>Energy costs</SectionHeading>
+
+        {/* KPI tiles — historical aggregates from /metrics/timeseries */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm px-5 py-4 flex flex-col gap-1">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">
+              Monthly Cost
+            </span>
+            <span className="text-2xl font-extrabold leading-none text-emerald-600 dark:text-emerald-400">
+              {monthlyLoading ? "…" : `SAR ${monthlySAR.toFixed(2)}`}
+            </span>
+            <span className="text-xs text-gray-400 dark:text-zinc-500">last 30 days · all machines</span>
+          </div>
+
+          <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm px-5 py-4 flex flex-col gap-1">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">
+              Avg Cost / h
+            </span>
+            <span className="text-2xl font-extrabold leading-none text-emerald-600 dark:text-emerald-400">
+              {monthlyLoading ? "…" : `SAR ${avgHourlySAR.toFixed(3)}`}
+            </span>
+            <span className="text-xs text-gray-400 dark:text-zinc-500">average hourly · last 30 days</span>
+          </div>
+
+          <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm px-5 py-4 flex flex-col gap-2">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">
+              Period Cost
+            </span>
+            <span className="text-2xl font-extrabold leading-none text-emerald-600 dark:text-emerald-400">
+              {rangeLoading ? "…" : `SAR ${rangeSAR.toFixed(2)}`}
+            </span>
+            <div className="flex gap-1 flex-wrap">
+              {RANGE_OPTS.map((opt) => (
                 <button
-                  key={p.label}
-                  onClick={() => setCostPeriod(p)}
-                  className={`px-3 py-1 text-sm transition-colors ${
-                    costPeriod.label === p.label
-                      ? "bg-gray-900 dark:bg-zinc-100 text-white dark:text-zinc-900 font-medium"
-                      : "bg-white dark:bg-zinc-900 text-gray-600 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800"
+                  key={opt.label}
+                  onClick={() => setRangeOpt(opt)}
+                  className={`px-2 py-0.5 text-[10px] rounded-full border font-semibold transition-colors ${
+                    rangeOpt.label === opt.label
+                      ? "bg-emerald-600 border-emerald-600 text-white"
+                      : "border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 hover:border-emerald-400"
                   }`}
                 >
-                  {p.label}
+                  {opt.label}
                 </button>
               ))}
             </div>
           </div>
         </div>
-        <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm p-4">
-          {machines.length === 0 ? (
-            <p className="text-sm text-gray-400 dark:text-zinc-500 text-center py-8">No machine data available.</p>
-          ) : (
-            <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={costData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fontSize: 11, fill: "#9ca3af" }}
-                  axisLine={false}
-                  tickLine={false}
-                  interval={costPeriod.days <= 7 ? 0 : Math.floor(costPeriod.days / 6)}
-                />
-                <YAxis
-                  tick={{ fontSize: 11, fill: "#9ca3af" }}
-                  axisLine={false}
-                  tickLine={false}
-                  tickFormatter={(v) => `€${v}`}
-                  width={46}
-                />
-                <Tooltip
-                  formatter={(value: number) => [`€${value.toFixed(2)}`, "Cost"]}
-                  contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e5e7eb" }}
-                  cursor={{ stroke: "#e5e7eb" }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="cost"
-                  stroke="#10b981"
-                  strokeWidth={2}
-                  dot={costPeriod.days <= 7}
-                  activeDot={{ r: 5 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-        </div>
+
+        {/* Interactive cost chart — same data as power chart, values × ENERGY_RATE */}
+        <OverviewInteractiveChart machines={machines} sensorMap={sensorMap} mode="cost" />
       </section>
     </div>
   );

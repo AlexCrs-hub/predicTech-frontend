@@ -30,7 +30,7 @@ import {
 
 // ── constants (kept for future use) ──────────────────────────────────────────
 
-const ENERGY_RATE = 0.15; // €/kWh
+const ENERGY_RATE = 0.18; // SAR/kWh
 
 const COST_PERIODS = [
   { label: "7d",  days: 7  },
@@ -758,8 +758,8 @@ export default function MachinePage() {
             <div className="grid grid-cols-1 gap-2">
               {[
                 { label: "Current Power", value: livePower > 0 ? `${livePower.toFixed(2)} kW` : "— kW",          color: "text-blue-600 dark:text-blue-400" },
-                { label: "Cost / h",      value: costPerHour > 0 ? `€${costPerHour.toFixed(2)}`  : "€—",          color: "text-emerald-600 dark:text-emerald-400" },
-                { label: "Daily est.",    value: costPerDay  > 0 ? `€${costPerDay.toFixed(0)}`   : "€—",          color: "text-emerald-600 dark:text-emerald-400" },
+                { label: "Cost / h",      value: costPerHour > 0 ? `SAR ${costPerHour.toFixed(2)}`  : "SAR —",          color: "text-emerald-600 dark:text-emerald-400" },
+                { label: "Daily est.",    value: costPerDay  > 0 ? `SAR ${costPerDay.toFixed(0)}`   : "SAR —",          color: "text-emerald-600 dark:text-emerald-400" },
               ].map(({ label, value, color }) => (
                 <div key={label} className="flex items-center justify-between rounded-lg bg-gray-50 dark:bg-zinc-800/60 py-2.5 px-3">
                   <span className="text-[10px] text-gray-400 dark:text-zinc-500 uppercase tracking-wide">{label}</span>

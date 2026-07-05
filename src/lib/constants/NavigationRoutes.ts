@@ -1,6 +1,6 @@
 export const NAVIGATION_ROUTES: { to: string; label: string }[] = [
   { to: "/app/overview", label: "Overview" },
-  { to: "/app", label: "Active Machines" },
+  { to: "/app", label: "Machines" },
   { to: "/app/update-machine", label: "Update Machine" },
   { to: "/app/reports", label: "Reports" },
   { to: "/app/tickets", label: "Tickets" },
