@@ -524,9 +524,12 @@ function useAggregatePeriod(
 export default function OverviewPage() {
   const [machines, setMachines] = useState<Machine[]>([]);
   const [machineStatus, setMachineStatus] = useState<"loading" | "ok" | "auth" | "empty" | "error">("loading");
-  const [rangeOpt, setRangeOpt] = useState<RangeOpt>(RANGE_OPTS[2]);
-  const [estPeriod, setEstPeriod] = useState<EstPeriod>(EST_PERIODS[0]);
-  const [avgPeriod, setAvgPeriod] = useState<AvgPeriod>(AVG_PERIODS[0]);
+  const [rangeOptEnergy, setRangeOptEnergy] = useState<RangeOpt>(RANGE_OPTS[2]);
+  const [rangeOptCost,   setRangeOptCost]   = useState<RangeOpt>(RANGE_OPTS[2]);
+  const [estPeriodEnergy, setEstPeriodEnergy] = useState<EstPeriod>(EST_PERIODS[0]);
+  const [estPeriodCost,   setEstPeriodCost]   = useState<EstPeriod>(EST_PERIODS[0]);
+  const [avgPeriodEnergy, setAvgPeriodEnergy] = useState<AvgPeriod>(AVG_PERIODS[0]);
+  const [avgPeriodCost,   setAvgPeriodCost]   = useState<AvgPeriod>(AVG_PERIODS[0]);
   const { reports } = useNotifications();
   const { liveKw, machineStates } = useWebSocket();
 
@@ -544,20 +547,21 @@ export default function OverviewPage() {
   const sensorMap = useAllPowerSensorIds(machines);
   const activeReports = reports.filter((r) => r.status !== "fixed");
 
-  // Live KPI values — sourced directly from SSE liveKw
+  // Live KPI values
   const totalKw      = machines.reduce((s, m) => s + (liveKw[m._id] || 0), 0);
-  const estCostSAR   = totalKw * ENERGY_RATE * estPeriod.mult;
-  const estEnergyKwh = totalKw * estPeriod.mult;
+  const estCostSAR   = totalKw * ENERGY_RATE * estPeriodCost.mult;
+  const estEnergyKwh = totalKw * estPeriodEnergy.mult;
 
   // Machine online count from live machine-state events
   const hasStateData = machines.some((m) => machineStates[m._id] !== undefined);
   const onlineCount  = machines.filter((m) => machineStates[m._id]?.state === "on").length;
 
-  // Historical cost aggregates for KPI tiles
+  // Historical aggregates — monthly base + two independent range queries
   const { totalSAR: monthlySAR, totalKwh: monthlyKwh, loading: monthlyLoading } = useAggregatePeriod(machines, 720);
-  const avgCostSAR   = monthlySAR  > 0 ? monthlySAR  / (720 / avgPeriod.divH) : 0;
-  const avgEnergyKwh = monthlyKwh  > 0 ? monthlyKwh  / (720 / avgPeriod.divH) : 0;
-  const { totalSAR: rangeSAR, totalKwh: rangeKwh, loading: rangeLoading } = useAggregatePeriod(machines, rangeOpt.hours);
+  const avgCostSAR   = monthlySAR > 0 ? monthlySAR / (720 / avgPeriodCost.divH)   : 0;
+  const avgEnergyKwh = monthlyKwh > 0 ? monthlyKwh / (720 / avgPeriodEnergy.divH) : 0;
+  const { totalSAR: rangeSAR,  loading: rangeLoadingCost   } = useAggregatePeriod(machines, rangeOptCost.hours);
+  const { totalKwh: rangeKwh,  loading: rangeLoadingEnergy } = useAggregatePeriod(machines, rangeOptEnergy.hours);
 
   return (
     <div className="w-full p-6 flex flex-col gap-6 bg-gray-50 dark:bg-zinc-950 min-h-screen">
@@ -618,13 +622,13 @@ export default function OverviewPage() {
         <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm px-5 py-4 flex flex-col gap-2">
           <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">Avg Energy</span>
           <span className="text-2xl font-extrabold leading-none text-blue-600 dark:text-blue-400">
-            {monthlyLoading ? "…" : `${avgEnergyKwh.toFixed(avgPeriod.divH >= 24 ? 1 : 2)} kWh`}
+            {monthlyLoading ? "…" : `${avgEnergyKwh.toFixed(avgPeriodEnergy.divH >= 24 ? 1 : 2)} kWh`}
           </span>
           <div className="flex gap-1 flex-wrap">
             {AVG_PERIODS.map((p) => (
-              <button key={p.label} onClick={() => setAvgPeriod(p)}
+              <button key={p.label} onClick={() => setAvgPeriodEnergy(p)}
                 className={`px-2 py-0.5 text-[10px] rounded-full border font-semibold transition-colors ${
-                  avgPeriod.label === p.label
+                  avgPeriodEnergy.label === p.label
                     ? "bg-blue-600 border-blue-600 text-white"
                     : "border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 hover:border-blue-400"
                 }`}>
@@ -642,9 +646,9 @@ export default function OverviewPage() {
           </span>
           <div className="flex gap-1 flex-wrap">
             {EST_PERIODS.map((p) => (
-              <button key={p.label} onClick={() => setEstPeriod(p)}
+              <button key={p.label} onClick={() => setEstPeriodEnergy(p)}
                 className={`px-2 py-0.5 text-[10px] rounded-full border font-semibold transition-colors ${
-                  estPeriod.label === p.label
+                  estPeriodEnergy.label === p.label
                     ? "bg-blue-600 border-blue-600 text-white"
                     : "border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 hover:border-blue-400"
                 }`}>
@@ -658,13 +662,13 @@ export default function OverviewPage() {
         <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm px-5 py-4 flex flex-col gap-2">
           <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">Period Energy</span>
           <span className="text-2xl font-extrabold leading-none text-blue-600 dark:text-blue-400">
-            {rangeLoading ? "…" : `${rangeKwh.toFixed(1)} kWh`}
+            {rangeLoadingEnergy ? "…" : `${rangeKwh.toFixed(1)} kWh`}
           </span>
           <div className="flex gap-1 flex-wrap">
             {RANGE_OPTS.map((opt) => (
-              <button key={opt.label} onClick={() => setRangeOpt(opt)}
+              <button key={opt.label} onClick={() => setRangeOptEnergy(opt)}
                 className={`px-2 py-0.5 text-[10px] rounded-full border font-semibold transition-colors ${
-                  rangeOpt.label === opt.label
+                  rangeOptEnergy.label === opt.label
                     ? "bg-blue-600 border-blue-600 text-white"
                     : "border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 hover:border-blue-400"
                 }`}>
@@ -690,13 +694,13 @@ export default function OverviewPage() {
         <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm px-5 py-4 flex flex-col gap-2">
           <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">Avg Cost</span>
           <span className="text-2xl font-extrabold leading-none text-emerald-600 dark:text-emerald-400">
-            {monthlyLoading ? "…" : `SAR ${avgCostSAR.toFixed(avgPeriod.divH >= 24 ? 2 : 3)}`}
+            {monthlyLoading ? "…" : `SAR ${avgCostSAR.toFixed(avgPeriodCost.divH >= 24 ? 2 : 3)}`}
           </span>
           <div className="flex gap-1 flex-wrap">
             {AVG_PERIODS.map((p) => (
-              <button key={p.label} onClick={() => setAvgPeriod(p)}
+              <button key={p.label} onClick={() => setAvgPeriodCost(p)}
                 className={`px-2 py-0.5 text-[10px] rounded-full border font-semibold transition-colors ${
-                  avgPeriod.label === p.label
+                  avgPeriodCost.label === p.label
                     ? "bg-emerald-600 border-emerald-600 text-white"
                     : "border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 hover:border-emerald-400"
                 }`}>
@@ -714,9 +718,9 @@ export default function OverviewPage() {
           </span>
           <div className="flex gap-1 flex-wrap">
             {EST_PERIODS.map((p) => (
-              <button key={p.label} onClick={() => setEstPeriod(p)}
+              <button key={p.label} onClick={() => setEstPeriodCost(p)}
                 className={`px-2 py-0.5 text-[10px] rounded-full border font-semibold transition-colors ${
-                  estPeriod.label === p.label
+                  estPeriodCost.label === p.label
                     ? "bg-emerald-600 border-emerald-600 text-white"
                     : "border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 hover:border-emerald-400"
                 }`}>
@@ -730,13 +734,13 @@ export default function OverviewPage() {
         <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm px-5 py-4 flex flex-col gap-2">
           <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">Period Cost</span>
           <span className="text-2xl font-extrabold leading-none text-emerald-600 dark:text-emerald-400">
-            {rangeLoading ? "…" : `SAR ${rangeSAR.toFixed(2)}`}
+            {rangeLoadingCost ? "…" : `SAR ${rangeSAR.toFixed(2)}`}
           </span>
           <div className="flex gap-1 flex-wrap">
             {RANGE_OPTS.map((opt) => (
-              <button key={opt.label} onClick={() => setRangeOpt(opt)}
+              <button key={opt.label} onClick={() => setRangeOptCost(opt)}
                 className={`px-2 py-0.5 text-[10px] rounded-full border font-semibold transition-colors ${
-                  rangeOpt.label === opt.label
+                  rangeOptCost.label === opt.label
                     ? "bg-emerald-600 border-emerald-600 text-white"
                     : "border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 hover:border-emerald-400"
                 }`}>
