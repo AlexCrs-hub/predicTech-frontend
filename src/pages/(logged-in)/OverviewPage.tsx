@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { useNotifications, Report, ReportStatus } from "@/context/NotificationContext";
+import { useNotifications } from "@/context/NotificationContext";
 import { fetchAllMachines } from "@/lib/api/machineApi";
 import { Machine } from "@/lib/components/machineList/types";
 import { useWebSocket } from "@/context/WebSocketContext";
@@ -12,6 +12,7 @@ import {
 import {
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LineChart, Line,
+  PieChart, Pie, Cell,
 } from "recharts";
 
 const ENERGY_RATE = 0.18; // SAR/kWh
@@ -38,47 +39,34 @@ const RANGE_OPTS = [
 ] as const;
 type RangeOpt = typeof RANGE_OPTS[number];
 
-// ── Report card helpers ───────────────────────────────────────────────────────
-const STATUS_LABEL: Record<ReportStatus, string> = {
-  new: "New",
-  in_progress: "In Progress",
-  needs_more_time: "Needs More Time",
-  fixed: "Fixed",
-};
+const PIE_PERIODS = [
+  { label: "24h", hours: 24  },
+  { label: "7d",  hours: 168 },
+  { label: "30d", hours: 720 },
+] as const;
+type PiePeriod = typeof PIE_PERIODS[number];
 
-const STATUS_BADGE: Record<ReportStatus, string> = {
-  new:             "bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-zinc-400 border-gray-300 dark:border-zinc-600",
-  in_progress:     "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border-blue-300 dark:border-blue-700",
-  needs_more_time: "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 border-orange-300 dark:border-orange-700",
-  fixed:           "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-300 dark:border-green-700",
-};
+const PIE_COLORS = [
+  "#3b82f6", "#10b981", "#f59e0b", "#8b5cf6",
+  "#ef4444", "#06b6d4", "#f97316", "#84cc16",
+];
 
-const BORDER_ACCENT: Record<ReportStatus, string> = {
-  new:             "border-l-gray-400 dark:border-l-zinc-600",
-  in_progress:     "border-l-blue-500",
-  needs_more_time: "border-l-orange-500",
-  fixed:           "border-l-green-500",
-};
+const EST_PERIODS = [
+  { label: "1h",  mult: 1   },
+  { label: "1d",  mult: 24  },
+  { label: "1w",  mult: 168 },
+  { label: "1mo", mult: 720 },
+] as const;
+type EstPeriod = typeof EST_PERIODS[number];
 
-function CompactReportCard({ report }: { report: Report }) {
-  return (
-    <Link to="/app/reports">
-      <div className={`rounded-md border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm overflow-hidden hover:shadow-md transition-shadow flex border-l-4 ${BORDER_ACCENT[report.status]}`}>
-        <div className="flex flex-col px-3 py-2 flex-1 min-w-0">
-          <div className="flex items-center justify-between gap-2">
-            <span className="font-semibold text-sm text-gray-900 dark:text-zinc-100 truncate">
-              {report.sensorName} — {report.machineName}
-            </span>
-            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border shrink-0 ${STATUS_BADGE[report.status]}`}>
-              {STATUS_LABEL[report.status]}
-            </span>
-          </div>
-          <span className="text-xs text-gray-500 dark:text-zinc-500 mt-0.5 truncate">{report.comment}</span>
-        </div>
-      </div>
-    </Link>
-  );
-}
+const AVG_PERIODS = [
+  { label: "1h",  divH: 1   },
+  { label: "1d",  divH: 24  },
+  { label: "1w",  divH: 168 },
+  { label: "1mo", divH: 720 },
+] as const;
+type AvgPeriod = typeof AVG_PERIODS[number];
+
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
@@ -354,12 +342,147 @@ function OverviewInteractiveChart({
   );
 }
 
-// ── Aggregate energy cost hook (for cost KPI tiles only) ──────────────────────
-function useAggregateCost(
+// ── Per-machine cost breakdown hook (for pie chart) ──────────────────────────
+function useMachineCostBreakdown(
+  machines: Machine[],
+  hours: number,
+): { data: { id: string; name: string; sar: number }[]; loading: boolean } {
+  const [data, setData] = useState<{ id: string; name: string; sar: number }[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (machines.length === 0) return;
+    const gran: "hour" | "day" = hours <= 720 ? "hour" : "day";
+    const to   = new Date();
+    const from = new Date(to.getTime() - hours * 3_600_000);
+    const durH = gran === "day" ? 24 : 1;
+
+    setLoading(true);
+    Promise.allSettled(
+      machines.map((m) =>
+        fetchPowerTimeseries({
+          machineId: m._id,
+          from: from.toISOString(),
+          to: to.toISOString(),
+          granularity: gran,
+        }).then((res): { id: string; name: string; sar: number } => ({
+          id: m._id,
+          name: m.name,
+          sar: +res.points
+            .reduce((s, p) => s + p.avgPowerKw * durH * ENERGY_RATE, 0)
+            .toFixed(2),
+        }))
+      )
+    ).then((results) => {
+      setData(
+        results
+          .filter((r): r is PromiseFulfilledResult<{ id: string; name: string; sar: number }> =>
+            r.status === "fulfilled" && r.value.sar > 0
+          )
+          .map((r) => r.value)
+          .sort((a, b) => b.sar - a.sar)
+      );
+    }).finally(() => setLoading(false));
+  }, [machines.length, hours]);
+
+  return { data, loading };
+}
+
+// ── Machine cost pie chart ────────────────────────────────────────────────────
+function MachineCostPie({ machines }: { machines: Machine[] }) {
+  const [period, setPeriod] = useState<PiePeriod>(PIE_PERIODS[1]);
+  const { data, loading } = useMachineCostBreakdown(machines, period.hours);
+  const total = data.reduce((s, d) => s + d.sar, 0);
+
+  return (
+    <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm p-5">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">
+          Cost by machine
+        </span>
+        <div className="flex rounded-md border border-gray-200 dark:border-zinc-700 overflow-hidden">
+          {PIE_PERIODS.map((p) => (
+            <button key={p.label} onClick={() => setPeriod(p)}
+              className={`px-3 py-1 text-[10px] transition-colors ${
+                period.label === p.label
+                  ? "bg-gray-900 dark:bg-zinc-100 text-white dark:text-zinc-900 font-semibold"
+                  : "text-gray-500 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800"
+              }`}>{p.label}</button>
+          ))}
+        </div>
+      </div>
+
+      {loading ? (
+        <p className="text-sm text-gray-400 dark:text-zinc-500 animate-pulse text-center py-10">Loading…</p>
+      ) : data.length === 0 ? (
+        <p className="text-sm text-gray-400 dark:text-zinc-500 text-center py-10">No cost data for this period.</p>
+      ) : (
+        <div className="flex flex-row items-center gap-4">
+          {/* donut pie */}
+          <div className="shrink-0 w-[200px]">
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart>
+                <Pie
+                  data={data}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={52}
+                  outerRadius={88}
+                  paddingAngle={2}
+                  dataKey="sar"
+                  nameKey="name"
+                >
+                  {data.map((_d, i) => (
+                    <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  formatter={(v: number) => [`SAR ${v.toFixed(2)}`, "Cost"]}
+                  contentStyle={{ fontSize: 11, borderRadius: 8, border: "1px solid #e5e7eb" }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* legend */}
+          <div className="flex-1 min-w-0 flex flex-col gap-2.5">
+            {data.map((d, i) => (
+              <div key={d.id} className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="w-2.5 h-2.5 rounded-sm shrink-0"
+                    style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
+                  <span className="text-sm text-gray-700 dark:text-zinc-300 truncate">{d.name}</span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0 tabular-nums">
+                  <span className="text-xs text-gray-400 dark:text-zinc-500 w-8 text-right">
+                    {total > 0 ? `${Math.round((d.sar / total) * 100)}%` : "—"}
+                  </span>
+                  <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                    SAR {d.sar.toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            ))}
+            <div className="mt-1 pt-2.5 border-t border-gray-100 dark:border-zinc-800 flex justify-between items-center">
+              <span className="text-xs text-gray-400 dark:text-zinc-500">Total ({period.label})</span>
+              <span className="text-sm font-extrabold text-emerald-600 dark:text-emerald-400">
+                SAR {total.toFixed(2)}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Aggregate energy period hook (SAR + kWh for KPI tiles) ───────────────────
+function useAggregatePeriod(
   machines: Machine[],
   windowHours: number,
-): { total: number; loading: boolean } {
-  const [total, setTotal] = useState(0);
+): { totalSAR: number; totalKwh: number; loading: boolean } {
+  const [totalSAR, setTotalSAR] = useState(0);
+  const [totalKwh, setTotalKwh] = useState(0);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -381,16 +504,20 @@ function useAggregateCost(
       )
     )
       .then((results) => {
-        let sum = 0;
+        let sar = 0;
+        let kwh = 0;
         for (const res of results)
-          for (const p of res.points)
-            sum += p.avgPowerKw * durH * ENERGY_RATE;
-        setTotal(+sum.toFixed(2));
+          for (const p of res.points) {
+            kwh += p.avgPowerKw * durH;
+            sar += p.avgPowerKw * durH * ENERGY_RATE;
+          }
+        setTotalSAR(+sar.toFixed(2));
+        setTotalKwh(+kwh.toFixed(2));
       })
       .finally(() => setLoading(false));
   }, [machines.length, windowHours]);
 
-  return { total, loading };
+  return { totalSAR, totalKwh, loading };
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
@@ -398,6 +525,8 @@ export default function OverviewPage() {
   const [machines, setMachines] = useState<Machine[]>([]);
   const [machineStatus, setMachineStatus] = useState<"loading" | "ok" | "auth" | "empty" | "error">("loading");
   const [rangeOpt, setRangeOpt] = useState<RangeOpt>(RANGE_OPTS[2]);
+  const [estPeriod, setEstPeriod] = useState<EstPeriod>(EST_PERIODS[0]);
+  const [avgPeriod, setAvgPeriod] = useState<AvgPeriod>(AVG_PERIODS[0]);
   const { reports } = useNotifications();
   const { liveKw, machineStates } = useWebSocket();
 
@@ -416,23 +545,41 @@ export default function OverviewPage() {
   const activeReports = reports.filter((r) => r.status !== "fixed");
 
   // Live KPI values — sourced directly from SSE liveKw
-  const totalKw       = machines.reduce((s, m) => s + (liveKw[m._id] || 0), 0);
-  const hourlyCostSAR = totalKw * ENERGY_RATE;
-  const dailyCostSAR  = hourlyCostSAR * 24;
+  const totalKw      = machines.reduce((s, m) => s + (liveKw[m._id] || 0), 0);
+  const estCostSAR   = totalKw * ENERGY_RATE * estPeriod.mult;
+  const estEnergyKwh = totalKw * estPeriod.mult;
 
   // Machine online count from live machine-state events
-  const hasStateData  = machines.some((m) => machineStates[m._id] !== undefined);
-  const onlineCount   = machines.filter((m) => machineStates[m._id]?.state === "on").length;
+  const hasStateData = machines.some((m) => machineStates[m._id] !== undefined);
+  const onlineCount  = machines.filter((m) => machineStates[m._id]?.state === "on").length;
 
   // Historical cost aggregates for KPI tiles
-  const { total: monthlySAR, loading: monthlyLoading } = useAggregateCost(machines, 720);
-  const avgHourlySAR = monthlySAR > 0 ? monthlySAR / 720 : 0;
-  const { total: rangeSAR,   loading: rangeLoading   } = useAggregateCost(machines, rangeOpt.hours);
+  const { totalSAR: monthlySAR, totalKwh: monthlyKwh, loading: monthlyLoading } = useAggregatePeriod(machines, 720);
+  const avgCostSAR   = monthlySAR  > 0 ? monthlySAR  / (720 / avgPeriod.divH) : 0;
+  const avgEnergyKwh = monthlyKwh  > 0 ? monthlyKwh  / (720 / avgPeriod.divH) : 0;
+  const { totalSAR: rangeSAR, totalKwh: rangeKwh, loading: rangeLoading } = useAggregatePeriod(machines, rangeOpt.hours);
 
   return (
     <div className="w-full p-6 flex flex-col gap-6 bg-gray-50 dark:bg-zinc-950 min-h-screen">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-zinc-50">Overview</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-zinc-50">Overview</h1>
+          {machines.length > 0 && (
+            <span className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-zinc-400">
+              <span className={`w-2 h-2 rounded-full shrink-0 ${
+                hasStateData && onlineCount > 0
+                  ? "bg-green-500 animate-pulse"
+                  : "bg-gray-300 dark:bg-zinc-600"
+              }`} />
+              {hasStateData ? `${onlineCount} / ${machines.length} online` : `${machines.length} machines`}
+              {activeReports.length > 0 && (
+                <span className="ml-0.5 text-amber-500 dark:text-amber-400">
+                  · {activeReports.length} ticket{activeReports.length !== 1 ? "s" : ""}
+                </span>
+              )}
+            </span>
+          )}
+        </div>
         <Link to="/app/bigscreen" className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
           Big screen →
         </Link>
@@ -457,35 +604,147 @@ export default function OverviewPage() {
         </div>
       )}
 
-      {/* ── KPI tiles ── */}
+      {/* ── KPI tiles row 1 — energy ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <KpiTile
-          label="Machines"
-          value={hasStateData ? `${onlineCount} / ${machines.length}` : String(machines.length)}
-          sub={
-            hasStateData
-              ? `online · ${activeReports.length} open ticket${activeReports.length !== 1 ? "s" : ""}`
-              : `${activeReports.length} open ticket${activeReports.length !== 1 ? "s" : ""}`
-          }
-        />
+        {/* Live Power */}
         <KpiTile
           label="Live Power"
           value={totalKw > 0 ? `${totalKw.toFixed(1)} kW` : "— kW"}
           sub="total across all machines"
           accent="text-blue-600 dark:text-blue-400"
         />
-        <KpiTile
-          label="Est. Hourly Cost"
-          value={hourlyCostSAR > 0 ? `SAR ${hourlyCostSAR.toFixed(2)}` : "SAR —"}
-          sub={`@${ENERGY_RATE} SAR/kWh`}
-          accent="text-emerald-600 dark:text-emerald-400"
-        />
-        <KpiTile
-          label="Est. Daily Cost"
-          value={dailyCostSAR > 0 ? `SAR ${dailyCostSAR.toFixed(0)}` : "SAR —"}
-          sub="24 h projection"
-          accent="text-emerald-600 dark:text-emerald-400"
-        />
+
+        {/* Avg Energy — derived from 30-day history */}
+        <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm px-5 py-4 flex flex-col gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">Avg Energy</span>
+          <span className="text-2xl font-extrabold leading-none text-blue-600 dark:text-blue-400">
+            {monthlyLoading ? "…" : `${avgEnergyKwh.toFixed(avgPeriod.divH >= 24 ? 1 : 2)} kWh`}
+          </span>
+          <div className="flex gap-1 flex-wrap">
+            {AVG_PERIODS.map((p) => (
+              <button key={p.label} onClick={() => setAvgPeriod(p)}
+                className={`px-2 py-0.5 text-[10px] rounded-full border font-semibold transition-colors ${
+                  avgPeriod.label === p.label
+                    ? "bg-blue-600 border-blue-600 text-white"
+                    : "border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 hover:border-blue-400"
+                }`}>
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Est. Energy — live projection */}
+        <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm px-5 py-4 flex flex-col gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">Est. Energy</span>
+          <span className="text-2xl font-extrabold leading-none text-blue-600 dark:text-blue-400">
+            {totalKw > 0 ? `${estEnergyKwh.toFixed(1)} kWh` : "— kWh"}
+          </span>
+          <div className="flex gap-1 flex-wrap">
+            {EST_PERIODS.map((p) => (
+              <button key={p.label} onClick={() => setEstPeriod(p)}
+                className={`px-2 py-0.5 text-[10px] rounded-full border font-semibold transition-colors ${
+                  estPeriod.label === p.label
+                    ? "bg-blue-600 border-blue-600 text-white"
+                    : "border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 hover:border-blue-400"
+                }`}>
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Period Energy — historical */}
+        <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm px-5 py-4 flex flex-col gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">Period Energy</span>
+          <span className="text-2xl font-extrabold leading-none text-blue-600 dark:text-blue-400">
+            {rangeLoading ? "…" : `${rangeKwh.toFixed(1)} kWh`}
+          </span>
+          <div className="flex gap-1 flex-wrap">
+            {RANGE_OPTS.map((opt) => (
+              <button key={opt.label} onClick={() => setRangeOpt(opt)}
+                className={`px-2 py-0.5 text-[10px] rounded-full border font-semibold transition-colors ${
+                  rangeOpt.label === opt.label
+                    ? "bg-blue-600 border-blue-600 text-white"
+                    : "border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 hover:border-blue-400"
+                }`}>
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── KPI tiles row 2 — costs ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {/* Monthly Cost */}
+        <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm px-5 py-4 flex flex-col gap-1">
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">Monthly Cost</span>
+          <span className="text-2xl font-extrabold leading-none text-emerald-600 dark:text-emerald-400">
+            {monthlyLoading ? "…" : `SAR ${monthlySAR.toFixed(2)}`}
+          </span>
+          <span className="text-xs text-gray-400 dark:text-zinc-500">last 30 days · all machines</span>
+        </div>
+
+        {/* Avg Cost — switchable per h / day / week */}
+        <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm px-5 py-4 flex flex-col gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">Avg Cost</span>
+          <span className="text-2xl font-extrabold leading-none text-emerald-600 dark:text-emerald-400">
+            {monthlyLoading ? "…" : `SAR ${avgCostSAR.toFixed(avgPeriod.divH >= 24 ? 2 : 3)}`}
+          </span>
+          <div className="flex gap-1 flex-wrap">
+            {AVG_PERIODS.map((p) => (
+              <button key={p.label} onClick={() => setAvgPeriod(p)}
+                className={`px-2 py-0.5 text-[10px] rounded-full border font-semibold transition-colors ${
+                  avgPeriod.label === p.label
+                    ? "bg-emerald-600 border-emerald-600 text-white"
+                    : "border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 hover:border-emerald-400"
+                }`}>
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Est. Cost — live projection with period selector */}
+        <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm px-5 py-4 flex flex-col gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">Est. Cost</span>
+          <span className="text-2xl font-extrabold leading-none text-emerald-600 dark:text-emerald-400">
+            {totalKw > 0 ? `SAR ${estCostSAR.toFixed(2)}` : "SAR —"}
+          </span>
+          <div className="flex gap-1 flex-wrap">
+            {EST_PERIODS.map((p) => (
+              <button key={p.label} onClick={() => setEstPeriod(p)}
+                className={`px-2 py-0.5 text-[10px] rounded-full border font-semibold transition-colors ${
+                  estPeriod.label === p.label
+                    ? "bg-emerald-600 border-emerald-600 text-white"
+                    : "border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 hover:border-emerald-400"
+                }`}>
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Period Cost — real historical data */}
+        <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm px-5 py-4 flex flex-col gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">Period Cost</span>
+          <span className="text-2xl font-extrabold leading-none text-emerald-600 dark:text-emerald-400">
+            {rangeLoading ? "…" : `SAR ${rangeSAR.toFixed(2)}`}
+          </span>
+          <div className="flex gap-1 flex-wrap">
+            {RANGE_OPTS.map((opt) => (
+              <button key={opt.label} onClick={() => setRangeOpt(opt)}
+                className={`px-2 py-0.5 text-[10px] rounded-full border font-semibold transition-colors ${
+                  rangeOpt.label === opt.label
+                    ? "bg-emerald-600 border-emerald-600 text-white"
+                    : "border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 hover:border-emerald-400"
+                }`}>
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* ── Live power chart ── */}
@@ -494,107 +753,19 @@ export default function OverviewPage() {
         <OverviewInteractiveChart machines={machines} sensorMap={sensorMap} mode="power" />
       </section>
 
-      {/* ── Maintenance Tickets ── */}
-      <section className="flex flex-col gap-3">
-        <SectionHeading>
-          Maintenance Tickets
-          <span className="ml-2 text-xs font-normal normal-case text-gray-400 dark:text-zinc-600">
-            ({reports.length} total)
-          </span>
-        </SectionHeading>
-
-        <div className="grid grid-cols-4 gap-2">
-          {(["new", "in_progress", "needs_more_time", "fixed"] as const).map((s) => {
-            const count = reports.filter((r) => r.status === s).length;
-            const cfg = {
-              new:             { label: "New",         color: "bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-zinc-300 border-gray-200 dark:border-zinc-700" },
-              in_progress:     { label: "In Progress", color: "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800" },
-              needs_more_time: { label: "Pending",     color: "bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400 border-orange-200 dark:border-orange-800" },
-              fixed:           { label: "Fixed",       color: "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800" },
-            }[s];
-            return (
-              <div key={s} className={`flex flex-col items-center py-2.5 rounded-xl border ${cfg.color}`}>
-                <span className="text-xl font-extrabold leading-none">{count}</span>
-                <span className="text-[10px] font-medium mt-1 opacity-80">{cfg.label}</span>
-              </div>
-            );
-          })}
-        </div>
-
-        {reports.some((r) => r.escalation) && (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800">
-            <span className="text-orange-600 dark:text-orange-400 text-sm">⬆</span>
-            <span className="text-xs text-orange-700 dark:text-orange-400 font-medium">
-              {reports.filter((r) => r.escalation).length} ticket(s) escalated to management
-            </span>
-          </div>
-        )}
-
-        {activeReports.length === 0 ? (
-          <p className="text-sm text-gray-500 dark:text-zinc-500">No active reports.</p>
-        ) : (
-          activeReports.slice(0, 5).map((r) => <CompactReportCard key={r.id} report={r} />)
-        )}
-        {activeReports.length > 0 && (
-          <Link to="/app/reports" className="text-xs text-blue-600 dark:text-blue-400 hover:underline text-right">
-            View all tickets →
-          </Link>
-        )}
-      </section>
-
       {/* ── Energy Costs ── */}
       <section className="flex flex-col gap-4">
         <SectionHeading>Energy costs</SectionHeading>
 
-        {/* KPI tiles — historical aggregates from /metrics/timeseries */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm px-5 py-4 flex flex-col gap-1">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">
-              Monthly Cost
-            </span>
-            <span className="text-2xl font-extrabold leading-none text-emerald-600 dark:text-emerald-400">
-              {monthlyLoading ? "…" : `SAR ${monthlySAR.toFixed(2)}`}
-            </span>
-            <span className="text-xs text-gray-400 dark:text-zinc-500">last 30 days · all machines</span>
+        {/* Pie chart (1/3) + interactive cost chart (2/3) */}
+        <div className="flex flex-col lg:flex-row gap-3 items-stretch">
+          <div className="lg:basis-1/3 min-w-0">
+            <MachineCostPie machines={machines} />
           </div>
-
-          <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm px-5 py-4 flex flex-col gap-1">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">
-              Avg Cost / h
-            </span>
-            <span className="text-2xl font-extrabold leading-none text-emerald-600 dark:text-emerald-400">
-              {monthlyLoading ? "…" : `SAR ${avgHourlySAR.toFixed(3)}`}
-            </span>
-            <span className="text-xs text-gray-400 dark:text-zinc-500">average hourly · last 30 days</span>
-          </div>
-
-          <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm px-5 py-4 flex flex-col gap-2">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">
-              Period Cost
-            </span>
-            <span className="text-2xl font-extrabold leading-none text-emerald-600 dark:text-emerald-400">
-              {rangeLoading ? "…" : `SAR ${rangeSAR.toFixed(2)}`}
-            </span>
-            <div className="flex gap-1 flex-wrap">
-              {RANGE_OPTS.map((opt) => (
-                <button
-                  key={opt.label}
-                  onClick={() => setRangeOpt(opt)}
-                  className={`px-2 py-0.5 text-[10px] rounded-full border font-semibold transition-colors ${
-                    rangeOpt.label === opt.label
-                      ? "bg-emerald-600 border-emerald-600 text-white"
-                      : "border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 hover:border-emerald-400"
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
+          <div className="lg:basis-2/3 min-w-0">
+            <OverviewInteractiveChart machines={machines} sensorMap={sensorMap} mode="cost" />
           </div>
         </div>
-
-        {/* Interactive cost chart — same data as power chart, values × ENERGY_RATE */}
-        <OverviewInteractiveChart machines={machines} sensorMap={sensorMap} mode="cost" />
       </section>
     </div>
   );
