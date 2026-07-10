@@ -38,6 +38,13 @@ const COST_PERIODS = [
 ] as const;
 type CostPeriod = typeof COST_PERIODS[number];
 
+const ENERGY_COST_PERIODS = [
+  { label: "1d",  hours: 24  },
+  { label: "7d",  hours: 168 },
+  { label: "30d", hours: 720 },
+] as const;
+type EnergyCostPeriod = typeof ENERGY_COST_PERIODS[number];
+
 type TimelineSegment = {
   label: "Running" | "Idle" | "Down" | "Setup";
   color: string;
@@ -569,6 +576,10 @@ export default function MachinePage() {
   const { machineStates, liveKw }   = useWebSocket();
   // @ts-ignore — setCostPeriod kept for future cost sparkline
   const [costPeriod, setCostPeriod] = useState<CostPeriod>(COST_PERIODS[0]);
+  const [energyCostPeriod, setEnergyCostPeriod] = useState<EnergyCostPeriod>(ENERGY_COST_PERIODS[1]);
+  const [historicalSAR, setHistoricalSAR] = useState(0);
+  const [historicalKwh, setHistoricalKwh] = useState(0);
+  const [historicalLoading, setHistoricalLoading] = useState(false);
   const [metrics, setMetrics]       = useState<{
     utilization:    number | null;
     availability:   number | null;
@@ -626,6 +637,31 @@ export default function MachinePage() {
       .catch(() => setError("Failed to load machine details."));
     return () => { document.title = "predicTech"; };
   }, [machineId]);
+
+  // Fetch historical energy cost for this machine
+  useEffect(() => {
+    if (!machineId) return;
+    const gran: "hour" | "day" = energyCostPeriod.hours <= 168 ? "hour" : "day";
+    const to   = new Date();
+    const from = new Date(to.getTime() - energyCostPeriod.hours * 3_600_000);
+    const durH = gran === "day" ? 24 : 1;
+
+    setHistoricalLoading(true);
+    fetchPowerTimeseries({
+      machineId,
+      from: from.toISOString(),
+      to:   to.toISOString(),
+      granularity: gran,
+    }).then((data) => {
+      let sar = 0, kwh = 0;
+      for (const p of data.points) {
+        kwh += p.avgPowerKw * durH;
+        sar += p.avgPowerKw * durH * ENERGY_RATE;
+      }
+      setHistoricalSAR(+sar.toFixed(2));
+      setHistoricalKwh(+kwh.toFixed(2));
+    }).catch(() => {}).finally(() => setHistoricalLoading(false));
+  }, [machineId, energyCostPeriod.hours]);
 
   // Fetch metrics + downtime stats
   useEffect(() => {
@@ -769,6 +805,51 @@ export default function MachinePage() {
             </div>
           </Card>
 
+          {/* energy cost — historical from timeseries */}
+          <Card>
+            <div className="flex items-center justify-between mb-3">
+              <Label>Energy Cost</Label>
+              <div className="flex rounded-md border border-gray-200 dark:border-zinc-700 overflow-hidden">
+                {ENERGY_COST_PERIODS.map((p) => (
+                  <button key={p.label} onClick={() => setEnergyCostPeriod(p)}
+                    className={`px-2.5 py-0.5 text-[10px] transition-colors ${
+                      energyCostPeriod.label === p.label
+                        ? "bg-gray-900 dark:bg-zinc-100 text-white dark:text-zinc-900 font-semibold"
+                        : "bg-white dark:bg-zinc-900 text-gray-500 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800"
+                    }`}>
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-2">
+              {[
+                {
+                  label: "Total Cost",
+                  value: historicalLoading ? "…" : `SAR ${historicalSAR.toFixed(2)}`,
+                  color: "text-emerald-600 dark:text-emerald-400",
+                },
+                {
+                  label: "Energy Used",
+                  value: historicalLoading ? "…" : `${historicalKwh.toFixed(1)} kWh`,
+                  color: "text-blue-600 dark:text-blue-400",
+                },
+                {
+                  label: "Avg per hour",
+                  value: historicalLoading || historicalSAR === 0
+                    ? "—"
+                    : `SAR ${(historicalSAR / energyCostPeriod.hours).toFixed(3)}`,
+                  color: "text-emerald-600 dark:text-emerald-400",
+                },
+              ].map(({ label, value, color }) => (
+                <div key={label} className="flex items-center justify-between rounded-lg bg-gray-50 dark:bg-zinc-800/60 py-2.5 px-3">
+                  <span className="text-[10px] text-gray-400 dark:text-zinc-500 uppercase tracking-wide">{label}</span>
+                  <span className={`text-sm font-extrabold leading-none ${color}`}>{value}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+
           {/*
             ── KEPT FOR FUTURE USE (not rendered — data not yet wired) ─────────
 
@@ -780,12 +861,6 @@ export default function MachinePage() {
             <Card>
               <Label>Cycle Time</Label>
               <BigNumber value={cycleTimeS ?? "—"} unit={cycleTimeS !== null ? "s" : undefined} />
-            </Card>
-
-            <Card>  (Energy cost sparkline — costTrend uses getMachineUtilization simulation)
-              <ResponsiveContainer width="100%" height={90}>
-                <LineChart data={costTrend} ...>...</LineChart>
-              </ResponsiveContainer>
             </Card>
           */}
         </div>

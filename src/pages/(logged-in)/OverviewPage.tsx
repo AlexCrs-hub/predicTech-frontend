@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useNotifications } from "@/context/NotificationContext";
 import { fetchAllMachines } from "@/lib/api/machineApi";
 import { Machine } from "@/lib/components/machineList/types";
@@ -12,7 +12,7 @@ import {
 import {
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LineChart, Line,
-  PieChart, Pie, Cell,
+  PieChart, Pie, Cell, Sector,
 } from "recharts";
 
 const ENERGY_RATE = 0.18; // SAR/kWh
@@ -389,8 +389,27 @@ function useMachineCostBreakdown(
 }
 
 // ── Machine cost pie chart ────────────────────────────────────────────────────
+function PieActiveShape(props: any) {
+  const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill } = props;
+  return (
+    <g>
+      <Sector
+        cx={cx} cy={cy}
+        innerRadius={innerRadius - 3}
+        outerRadius={outerRadius + 8}
+        startAngle={startAngle}
+        endAngle={endAngle}
+        fill={fill}
+        opacity={0.92}
+      />
+    </g>
+  );
+}
+
 function MachineCostPie({ machines }: { machines: Machine[] }) {
+  const navigate = useNavigate();
   const [period, setPeriod] = useState<PiePeriod>(PIE_PERIODS[1]);
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const { data, loading } = useMachineCostBreakdown(machines, period.hours);
   const total = data.reduce((s, d) => s + d.sar, 0);
 
@@ -418,8 +437,8 @@ function MachineCostPie({ machines }: { machines: Machine[] }) {
         <p className="text-sm text-gray-400 dark:text-zinc-500 text-center py-10">No cost data for this period.</p>
       ) : (
         <div className="flex flex-row items-center gap-4">
-          {/* donut pie */}
-          <div className="shrink-0 w-[200px]">
+          {/* donut pie — slices are clickable */}
+          <div className="shrink-0 w-[200px] cursor-pointer">
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
                 <Pie
@@ -431,6 +450,14 @@ function MachineCostPie({ machines }: { machines: Machine[] }) {
                   paddingAngle={2}
                   dataKey="sar"
                   nameKey="name"
+                  cursor="pointer"
+                  activeIndex={activeIndex ?? undefined}
+                  activeShape={PieActiveShape}
+                  onMouseEnter={(_, index) => setActiveIndex(index)}
+                  onMouseLeave={() => setActiveIndex(null)}
+                  onClick={(entry: { id: string }) =>
+                    navigate(`/app/machine?machineId=${entry.id}`)
+                  }
                 >
                   {data.map((_d, i) => (
                     <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
@@ -444,10 +471,14 @@ function MachineCostPie({ machines }: { machines: Machine[] }) {
             </ResponsiveContainer>
           </div>
 
-          {/* legend */}
-          <div className="flex-1 min-w-0 flex flex-col gap-2.5">
+          {/* legend — items are clickable links, min-w prevents names from vanishing */}
+          <div className="flex-1 min-w-[100px] flex flex-col gap-2.5">
             {data.map((d, i) => (
-              <div key={d.id} className="flex items-center justify-between gap-3">
+              <Link
+                key={d.id}
+                to={`/app/machine?machineId=${d.id}`}
+                className="flex items-center justify-between gap-3 rounded-md hover:bg-gray-50 dark:hover:bg-zinc-800/60 px-1 -mx-1 transition-colors cursor-pointer"
+              >
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="w-2.5 h-2.5 rounded-sm shrink-0"
                     style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
@@ -461,7 +492,7 @@ function MachineCostPie({ machines }: { machines: Machine[] }) {
                     SAR {d.sar.toFixed(2)}
                   </span>
                 </div>
-              </div>
+              </Link>
             ))}
             <div className="mt-1 pt-2.5 border-t border-gray-100 dark:border-zinc-800 flex justify-between items-center">
               <span className="text-xs text-gray-400 dark:text-zinc-500">Total ({period.label})</span>
