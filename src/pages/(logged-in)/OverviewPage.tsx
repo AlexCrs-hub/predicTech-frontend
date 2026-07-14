@@ -147,7 +147,7 @@ function OverviewInteractiveChart({
   const valueAccent = mode === "cost"
     ? "text-emerald-600 dark:text-emerald-400"
     : "text-blue-600 dark:text-blue-400";
-  const decimals    = mode === "cost" ? 4 : 2;
+  const decimals    = 2;
   const toV         = (kw: number) => +(kw * (mode === "cost" ? ENERGY_RATE : 1)).toFixed(decimals);
 
   const load = useCallback(async (fromMs: number, toMs: number) => {
@@ -355,7 +355,6 @@ function useMachineCostBreakdown(
     const gran: "hour" | "day" = hours <= 720 ? "hour" : "day";
     const to   = new Date();
     const from = new Date(to.getTime() - hours * 3_600_000);
-    const durH = gran === "day" ? 24 : 1;
 
     setLoading(true);
     Promise.allSettled(
@@ -369,7 +368,7 @@ function useMachineCostBreakdown(
           id: m._id,
           name: m.name,
           sar: +res.points
-            .reduce((s, p) => s + p.avgPowerKw * durH * ENERGY_RATE, 0)
+            .reduce((s, p) => s + p.avgPowerKw * ((p.sampleCount || 0) / 3600) * ENERGY_RATE, 0)
             .toFixed(2),
         }))
       )
@@ -521,7 +520,6 @@ function useAggregatePeriod(
     const gran: "hour" | "day" = windowHours <= 720 ? "hour" : "day";
     const to   = new Date();
     const from = new Date(to.getTime() - windowHours * 3_600_000);
-    const durH = gran === "day" ? 24 : 1;
 
     setLoading(true);
     Promise.all(
@@ -539,8 +537,11 @@ function useAggregatePeriod(
         let kwh = 0;
         for (const res of results)
           for (const p of res.points) {
-            kwh += p.avgPowerKw * durH;
-            sar += p.avgPowerKw * durH * ENERGY_RATE;
+            // sampleCount ≈ seconds of actual data in this bucket (backend uses 1 reading/s).
+            // Dividing by 3600 converts to hours, so we only count time the machine was live.
+            const h = (p.sampleCount || 0) / 3600;
+            kwh += p.avgPowerKw * h;
+            sar += p.avgPowerKw * h * ENERGY_RATE;
           }
         setTotalSAR(+sar.toFixed(2));
         setTotalKwh(+kwh.toFixed(2));
@@ -653,7 +654,7 @@ export default function OverviewPage() {
         <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm px-5 py-4 flex flex-col gap-2">
           <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">Avg Energy</span>
           <span className="text-2xl font-extrabold leading-none text-blue-600 dark:text-blue-400">
-            {monthlyLoading ? "…" : `${avgEnergyKwh.toFixed(avgPeriodEnergy.divH >= 24 ? 1 : 2)} kWh`}
+            {monthlyLoading ? "…" : `${avgEnergyKwh.toFixed(1)} kWh`}
           </span>
           <div className="flex gap-1 flex-wrap">
             {AVG_PERIODS.map((p) => (
@@ -725,7 +726,7 @@ export default function OverviewPage() {
         <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm px-5 py-4 flex flex-col gap-2">
           <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">Avg Cost</span>
           <span className="text-2xl font-extrabold leading-none text-emerald-600 dark:text-emerald-400">
-            {monthlyLoading ? "…" : `SAR ${avgCostSAR.toFixed(avgPeriodCost.divH >= 24 ? 2 : 3)}`}
+            {monthlyLoading ? "…" : `SAR ${avgCostSAR.toFixed(2)}`}
           </span>
           <div className="flex gap-1 flex-wrap">
             {AVG_PERIODS.map((p) => (

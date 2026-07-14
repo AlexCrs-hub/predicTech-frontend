@@ -644,7 +644,6 @@ export default function MachinePage() {
     const gran: "hour" | "day" = energyCostPeriod.hours <= 168 ? "hour" : "day";
     const to   = new Date();
     const from = new Date(to.getTime() - energyCostPeriod.hours * 3_600_000);
-    const durH = gran === "day" ? 24 : 1;
 
     setHistoricalLoading(true);
     fetchPowerTimeseries({
@@ -655,8 +654,9 @@ export default function MachinePage() {
     }).then((data) => {
       let sar = 0, kwh = 0;
       for (const p of data.points) {
-        kwh += p.avgPowerKw * durH;
-        sar += p.avgPowerKw * durH * ENERGY_RATE;
+        const h = (p.sampleCount || 0) / 3600;
+        kwh += p.avgPowerKw * h;
+        sar += p.avgPowerKw * h * ENERGY_RATE;
       }
       setHistoricalSAR(+sar.toFixed(2));
       setHistoricalKwh(+kwh.toFixed(2));
@@ -838,7 +838,7 @@ export default function MachinePage() {
                   label: "Avg per hour",
                   value: historicalLoading || historicalSAR === 0
                     ? "—"
-                    : `SAR ${(historicalSAR / energyCostPeriod.hours).toFixed(3)}`,
+                    : `SAR ${(historicalSAR / energyCostPeriod.hours).toFixed(2)}`,
                   color: "text-emerald-600 dark:text-emerald-400",
                 },
               ].map(({ label, value, color }) => (

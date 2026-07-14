@@ -17,6 +17,7 @@ export type TimeseriesPoint = {
   minPowerKw: number;
   maxPowerKw: number;
   utilizationPct: number;
+  sampleCount: number;
 };
 
 export type TimeseriesResponse = {
