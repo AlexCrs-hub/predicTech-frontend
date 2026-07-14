@@ -642,6 +642,7 @@ export default function MachinePage() {
   useEffect(() => {
     if (!machineId) return;
     const gran: "hour" | "day" = energyCostPeriod.hours <= 168 ? "hour" : "day";
+    const durH = gran === "day" ? 24 : 1;
     const to   = new Date();
     const from = new Date(to.getTime() - energyCostPeriod.hours * 3_600_000);
 
@@ -654,12 +655,13 @@ export default function MachinePage() {
     }).then((data) => {
       let sar = 0, kwh = 0;
       for (const p of data.points) {
-        const h = (p.sampleCount || 0) / 3600;
-        kwh += p.avgPowerKw * h;
-        sar += p.avgPowerKw * h * ENERGY_RATE;
+        const kw = p.avgPowerKw;
+        if (!Number.isFinite(kw) || kw < 0 || kw > 10_000) continue;
+        kwh += kw * durH;
+        sar += kw * durH * ENERGY_RATE;
       }
-      setHistoricalSAR(+sar.toFixed(2));
-      setHistoricalKwh(+kwh.toFixed(2));
+      setHistoricalSAR(Number.isFinite(sar) && sar >= 0 ? +sar.toFixed(2) : 0);
+      setHistoricalKwh(Number.isFinite(kwh) && kwh >= 0 ? +kwh.toFixed(2) : 0);
     }).catch(() => {}).finally(() => setHistoricalLoading(false));
   }, [machineId, energyCostPeriod.hours]);
 

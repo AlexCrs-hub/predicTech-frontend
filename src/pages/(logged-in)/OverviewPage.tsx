@@ -364,13 +364,19 @@ function useMachineCostBreakdown(
           from: from.toISOString(),
           to: to.toISOString(),
           granularity: gran,
-        }).then((res): { id: string; name: string; sar: number } => ({
-          id: m._id,
-          name: m.name,
-          sar: +res.points
-            .reduce((s, p) => s + p.avgPowerKw * ((p.sampleCount || 0) / 3600) * ENERGY_RATE, 0)
-            .toFixed(2),
-        }))
+        }).then((res): { id: string; name: string; sar: number } => {
+          const durH = hours <= 720 ? 1 : 24;
+          const total = res.points.reduce((s, p) => {
+            const kw = p.avgPowerKw;
+            if (!Number.isFinite(kw) || kw < 0 || kw > 10_000) return s;
+            return s + kw * durH * ENERGY_RATE;
+          }, 0);
+          return {
+            id: m._id,
+            name: m.name,
+            sar: Number.isFinite(total) && total >= 0 ? +total.toFixed(2) : 0,
+          };
+        })
       )
     ).then((results) => {
       setData(
@@ -520,6 +526,7 @@ function useAggregatePeriod(
     const gran: "hour" | "day" = windowHours <= 720 ? "hour" : "day";
     const to   = new Date();
     const from = new Date(to.getTime() - windowHours * 3_600_000);
+    const durH = gran === "day" ? 24 : 1;
 
     setLoading(true);
     Promise.all(
@@ -537,14 +544,13 @@ function useAggregatePeriod(
         let kwh = 0;
         for (const res of results)
           for (const p of res.points) {
-            // sampleCount ≈ seconds of actual data in this bucket (backend uses 1 reading/s).
-            // Dividing by 3600 converts to hours, so we only count time the machine was live.
-            const h = (p.sampleCount || 0) / 3600;
-            kwh += p.avgPowerKw * h;
-            sar += p.avgPowerKw * h * ENERGY_RATE;
+            const kw = p.avgPowerKw;
+            if (!Number.isFinite(kw) || kw < 0 || kw > 10_000) continue;
+            kwh += kw * durH;
+            sar += kw * durH * ENERGY_RATE;
           }
-        setTotalSAR(+sar.toFixed(2));
-        setTotalKwh(+kwh.toFixed(2));
+        setTotalSAR(Number.isFinite(sar) && sar >= 0 ? +sar.toFixed(2) : 0);
+        setTotalKwh(Number.isFinite(kwh) && kwh >= 0 ? +kwh.toFixed(2) : 0);
       })
       .finally(() => setLoading(false));
   }, [machines.length, windowHours]);
@@ -653,9 +659,15 @@ export default function OverviewPage() {
         {/* Avg Energy — derived from 30-day history */}
         <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm px-5 py-4 flex flex-col gap-2">
           <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">Avg Energy</span>
-          <span className="text-2xl font-extrabold leading-none text-blue-600 dark:text-blue-400">
-            {monthlyLoading ? "…" : `${avgEnergyKwh.toFixed(1)} kWh`}
-          </span>
+          {monthlyLoading ? (
+            <span className="text-2xl font-extrabold leading-none text-blue-600 dark:text-blue-400">…</span>
+          ) : !(monthlyKwh > 0) ? (
+            <span className="text-sm font-medium text-gray-400 dark:text-zinc-500 leading-snug">Not enough data</span>
+          ) : (
+            <span className="text-2xl font-extrabold leading-none text-blue-600 dark:text-blue-400">
+              {avgEnergyKwh >= 10 ? avgEnergyKwh.toFixed(1) : avgEnergyKwh.toFixed(2)} kWh
+            </span>
+          )}
           <div className="flex gap-1 flex-wrap">
             {AVG_PERIODS.map((p) => (
               <button key={p.label} onClick={() => setAvgPeriodEnergy(p)}
@@ -693,9 +705,13 @@ export default function OverviewPage() {
         {/* Period Energy — historical */}
         <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm px-5 py-4 flex flex-col gap-2">
           <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">Period Energy</span>
-          <span className="text-2xl font-extrabold leading-none text-blue-600 dark:text-blue-400">
-            {rangeLoadingEnergy ? "…" : `${rangeKwh.toFixed(1)} kWh`}
-          </span>
+          {rangeLoadingEnergy ? (
+            <span className="text-2xl font-extrabold leading-none text-blue-600 dark:text-blue-400">…</span>
+          ) : !(rangeKwh > 0) ? (
+            <span className="text-sm font-medium text-gray-400 dark:text-zinc-500 leading-snug">Not enough data</span>
+          ) : (
+            <span className="text-2xl font-extrabold leading-none text-blue-600 dark:text-blue-400">{rangeKwh.toFixed(1)} kWh</span>
+          )}
           <div className="flex gap-1 flex-wrap">
             {RANGE_OPTS.map((opt) => (
               <button key={opt.label} onClick={() => setRangeOptEnergy(opt)}
@@ -716,18 +732,28 @@ export default function OverviewPage() {
         {/* Monthly Cost */}
         <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm px-5 py-4 flex flex-col gap-1">
           <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">Monthly Cost</span>
-          <span className="text-2xl font-extrabold leading-none text-emerald-600 dark:text-emerald-400">
-            {monthlyLoading ? "…" : `SAR ${monthlySAR.toFixed(2)}`}
-          </span>
+          {monthlyLoading ? (
+            <span className="text-2xl font-extrabold leading-none text-emerald-600 dark:text-emerald-400">…</span>
+          ) : !(monthlySAR > 0) ? (
+            <span className="text-sm font-medium text-gray-400 dark:text-zinc-500 leading-snug">Not enough data</span>
+          ) : (
+            <span className="text-2xl font-extrabold leading-none text-emerald-600 dark:text-emerald-400">SAR {monthlySAR.toFixed(2)}</span>
+          )}
           <span className="text-xs text-gray-400 dark:text-zinc-500">last 30 days · all machines</span>
         </div>
 
         {/* Avg Cost — switchable per h / day / week */}
         <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm px-5 py-4 flex flex-col gap-2">
           <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">Avg Cost</span>
-          <span className="text-2xl font-extrabold leading-none text-emerald-600 dark:text-emerald-400">
-            {monthlyLoading ? "…" : `SAR ${avgCostSAR.toFixed(2)}`}
-          </span>
+          {monthlyLoading ? (
+            <span className="text-2xl font-extrabold leading-none text-emerald-600 dark:text-emerald-400">…</span>
+          ) : !(monthlySAR > 0) ? (
+            <span className="text-sm font-medium text-gray-400 dark:text-zinc-500 leading-snug">Not enough data</span>
+          ) : (
+            <span className="text-2xl font-extrabold leading-none text-emerald-600 dark:text-emerald-400">
+              SAR {avgCostSAR.toFixed(2)}
+            </span>
+          )}
           <div className="flex gap-1 flex-wrap">
             {AVG_PERIODS.map((p) => (
               <button key={p.label} onClick={() => setAvgPeriodCost(p)}
@@ -765,9 +791,13 @@ export default function OverviewPage() {
         {/* Period Cost — real historical data */}
         <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm px-5 py-4 flex flex-col gap-2">
           <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">Period Cost</span>
-          <span className="text-2xl font-extrabold leading-none text-emerald-600 dark:text-emerald-400">
-            {rangeLoadingCost ? "…" : `SAR ${rangeSAR.toFixed(2)}`}
-          </span>
+          {rangeLoadingCost ? (
+            <span className="text-2xl font-extrabold leading-none text-emerald-600 dark:text-emerald-400">…</span>
+          ) : !(rangeSAR > 0) ? (
+            <span className="text-sm font-medium text-gray-400 dark:text-zinc-500 leading-snug">Not enough data</span>
+          ) : (
+            <span className="text-2xl font-extrabold leading-none text-emerald-600 dark:text-emerald-400">SAR {rangeSAR.toFixed(2)}</span>
+          )}
           <div className="flex gap-1 flex-wrap">
             {RANGE_OPTS.map((opt) => (
               <button key={opt.label} onClick={() => setRangeOptCost(opt)}
