@@ -18,7 +18,7 @@ interface WebSocketContextType {
   // latestReadings: Record<string, Record<string, LiveReading>>;
 }
 
-const WebSocketContext = createContext<WebSocketContextType | undefined>(undefined);
+export const WebSocketContext = createContext<WebSocketContextType | undefined>(undefined);
 
 export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [readings, setReadings] = useState<string>("");
