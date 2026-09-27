@@ -5,9 +5,15 @@ import { useLocation } from "react-router-dom";
 import { Machine } from "@/lib/components/machineList/types";
 import {
   ResponsiveContainer,
+  AreaChart,
+  Area,
   LineChart,
   Line,
   Tooltip,
+  ReferenceLine,
+  CartesianGrid,
+  XAxis,
+  YAxis,
 } from "recharts";
 import DowntimeLog from "@/lib/components/machine/DowntimeLog";
 import MachineSensors from "@/lib/components/machine/MachineSensors";
@@ -120,6 +126,95 @@ function BigNumber({ value, unit }: { value: React.ReactNode; unit?: string }) {
         </span>
       )}
     </div>
+  );
+}
+
+// ── Live power chart ──────────────────────────────────────────────────────────
+
+const LIVE_HISTORY_MAX = 60;
+
+type LivePoint = { t: string; kw: number };
+
+function LivePowerChart({
+  history,
+  maxKw,
+  cuttingThreshold,
+  downtimeThreshold,
+}: {
+  history: LivePoint[];
+  maxKw: number;
+  cuttingThreshold?: number;
+  downtimeThreshold?: number;
+}) {
+  if (history.length < 2) {
+    return (
+      <div className="flex items-center justify-center h-[140px] text-xs text-gray-400 dark:text-zinc-500">
+        Waiting for live data…
+      </div>
+    );
+  }
+
+  const yMax = Math.max(maxKw * 1.05, ...history.map((p) => p.kw));
+
+  return (
+    <ResponsiveContainer width="100%" height={140}>
+      <AreaChart data={history} margin={{ top: 6, right: 4, bottom: 0, left: 0 }}>
+        <defs>
+          <linearGradient id="liveKwGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%"  stopColor="#3b82f6" stopOpacity={0.25} />
+            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}    />
+          </linearGradient>
+        </defs>
+        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" className="dark:[stroke:#27272a]" vertical={false} />
+        <XAxis
+          dataKey="t"
+          tick={{ fontSize: 9, fill: "#9ca3af" }}
+          interval="preserveStartEnd"
+          axisLine={false}
+          tickLine={false}
+        />
+        <YAxis
+          domain={[0, yMax]}
+          tick={{ fontSize: 9, fill: "#9ca3af" }}
+          axisLine={false}
+          tickLine={false}
+          width={30}
+          tickFormatter={(v: number) => `${v.toFixed(0)}`}
+        />
+        <Tooltip
+          formatter={(v: number) => [`${v.toFixed(2)} kW`, "Power"]}
+          contentStyle={{ fontSize: 11, borderRadius: 6, border: "1px solid #e5e7eb" }}
+          labelStyle={{ fontSize: 10 }}
+        />
+        {cuttingThreshold != null && (
+          <ReferenceLine
+            y={cuttingThreshold}
+            stroke="#3b82f6"
+            strokeDasharray="4 3"
+            strokeWidth={1.5}
+            label={{ value: "cutting", position: "insideTopRight", fontSize: 9, fill: "#3b82f6" }}
+          />
+        )}
+        {downtimeThreshold != null && (
+          <ReferenceLine
+            y={downtimeThreshold}
+            stroke="#f59e0b"
+            strokeDasharray="4 3"
+            strokeWidth={1.5}
+            label={{ value: "idle", position: "insideTopRight", fontSize: 9, fill: "#f59e0b" }}
+          />
+        )}
+        <Area
+          type="monotone"
+          dataKey="kw"
+          stroke="#3b82f6"
+          strokeWidth={2}
+          fill="url(#liveKwGrad)"
+          dot={false}
+          isAnimationActive={false}
+        />
+      </AreaChart>
+    </ResponsiveContainer>
   );
 }
 
@@ -293,6 +388,7 @@ export default function MachinePage() {
     plannedPct: null, unplannedPct: null,
   });
   const [dtStats, setDtStats] = useState<DowntimeStats | null>(null);
+  const [liveHistory, setLiveHistory] = useState<LivePoint[]>([]);
   const { search } = useLocation();
   const machineId = new URLSearchParams(search).get("machineId") || "";
 
@@ -317,6 +413,16 @@ export default function MachinePage() {
       };
     });
   })();
+
+  // Rolling live-power buffer
+  useEffect(() => {
+    if (!livePower) return;
+    const label = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    setLiveHistory((prev) => {
+      const next = [...prev, { t: label, kw: livePower }];
+      return next.length > LIVE_HISTORY_MAX ? next.slice(-LIVE_HISTORY_MAX) : next;
+    });
+  }, [livePower]);
 
   useEffect(() => {
     fetchMachineById(machineId).then((res) => {
@@ -527,6 +633,22 @@ export default function MachinePage() {
 
         {/* right column */}
         <div className="flex flex-col gap-4">
+          {/* live power */}
+          <Card>
+            <div className="flex items-center justify-between mb-2">
+              <Label>Live Power Consumption</Label>
+              <span className="text-lg font-extrabold text-blue-600 dark:text-blue-400 leading-none">
+                {livePower > 0 ? `${livePower.toFixed(1)} kW` : "— kW"}
+              </span>
+            </div>
+            <LivePowerChart
+              history={liveHistory}
+              maxKw={machine?.maxPowerConsumption ?? 30}
+              cuttingThreshold={machine?.cuttingThreshold}
+              downtimeThreshold={machine?.downtimeThreshold}
+            />
+          </Card>
+
           {/* production timeline */}
           <Card>
             <Label>Production Timeline</Label>

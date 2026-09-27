@@ -32,39 +32,74 @@ import { AuthProvider } from "./context/AuthContext";
 import PrivateRoute from "./lib/components/PrivateRoute";
 import { WebSocketProvider } from "./context/WebSocketContext";
 import { NotificationProvider } from "./context/NotificationContext";
+import { IS_DEMO } from "./demo/config";
+import { installDemoFetch } from "./demo/fetchInterceptor";
+import { DemoWebSocketProvider } from "./demo/DemoWebSocketProvider";
 
-const router = createBrowserRouter([
-  { path: "/", element: <LandingPage />, errorElement: <NotFound /> },
-  { path: "/login", element: <LoginPage /> },
-  { path: "/register", element: <RegisterPage /> },
-  {
-    path: "/app",
-    element: <PrivateRoute />,
-    errorElement: <RouteErrorBoundary />,
-    children: [
-      { path: "/app", element: <ActiveMachineList /> },
-      { path: "/app/active-machines", element: <ActiveMachineList /> },
-      { path: "/app/add-machine", element: <AddMachinePage /> },
-      { path: "/app/report", element: <AddReportPage /> },
-      { path: "/app/reports", element: <ReportsPage /> },
-      { path: "/app/overview", element: <OverviewPage /> },
-      { path: "/app/contact", element: <ContactPage /> },
-      { path: "/app/bigscreen", element: <BigScreenPage /> },
-      { path: "/app/tickets", element: <TicketsPage /> },
-      { path: "/app/machine", element: <MachinePage /> },
-      { path: "/app/notification-groups", element: <NotificationGroupsPage /> },
-    ],
-  },
-]);
+// ── Demo mode bootstrap ────────────────────────────────────────────────────────
+if (IS_DEMO) {
+  installDemoFetch();
+
+  // Pre-populate auth so PrivateRoute passes without a real login
+  if (!localStorage.getItem("user")) {
+    const demoUser = {
+      message: "Demo login",
+      success: true,
+      user: {
+        _id: "demo-user-001",
+        name: "Demo Admin",
+        email: "demo@predictech.io",
+        role: "admin",
+        isVerified: true,
+        createdAt: "2025-01-01T00:00:00.000Z",
+        updatedAt: "2025-01-01T00:00:00.000Z",
+        lastLogin: new Date().toISOString(),
+        verificationToken: "",
+        verificationTkoenExpiresAt: "",
+        __v: 0,
+      },
+    };
+    localStorage.setItem("user", JSON.stringify(demoUser));
+  }
+}
+
+const WsWrapper = IS_DEMO ? DemoWebSocketProvider : WebSocketProvider;
+
+const router = createBrowserRouter(
+  [
+    { path: "/", element: <LandingPage />, errorElement: <NotFound /> },
+    { path: "/login", element: <LoginPage /> },
+    { path: "/register", element: <RegisterPage /> },
+    {
+      path: "/app",
+      element: <PrivateRoute />,
+      errorElement: <RouteErrorBoundary />,
+      children: [
+        { path: "/app", element: <ActiveMachineList /> },
+        { path: "/app/active-machines", element: <ActiveMachineList /> },
+        { path: "/app/add-machine", element: <AddMachinePage /> },
+        { path: "/app/report", element: <AddReportPage /> },
+        { path: "/app/reports", element: <ReportsPage /> },
+        { path: "/app/overview", element: <OverviewPage /> },
+        { path: "/app/contact", element: <ContactPage /> },
+        { path: "/app/bigscreen", element: <BigScreenPage /> },
+        { path: "/app/tickets", element: <TicketsPage /> },
+        { path: "/app/machine", element: <MachinePage /> },
+        { path: "/app/notification-groups", element: <NotificationGroupsPage /> },
+      ],
+    },
+  ],
+  IS_DEMO ? { basename: "/demo" } : undefined
+);
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <AuthProvider>
-      <WebSocketProvider>
+      <WsWrapper>
         <NotificationProvider>
           <RouterProvider router={router} />
         </NotificationProvider>
-      </WebSocketProvider>
+      </WsWrapper>
     </AuthProvider>
   </StrictMode>,
 );
