@@ -12,7 +12,7 @@ export interface DemoMachine {
 export const DEMO_MACHINES: DemoMachine[] = [
   {
     _id: "dm-laser-001",
-    name: "Fiber Laser Cutter FL-3000",
+    name: "Machine 1",
     maxPowerConsumption: 25,
     downtimeThreshold: 4,
     cuttingThreshold: 14,
@@ -22,7 +22,7 @@ export const DEMO_MACHINES: DemoMachine[] = [
   },
   {
     _id: "dm-cnc-002",
-    name: "CNC Machining Center VMC-850",
+    name: "Machine 2",
     maxPowerConsumption: 18,
     downtimeThreshold: 3,
     cuttingThreshold: 10,
@@ -32,7 +32,7 @@ export const DEMO_MACHINES: DemoMachine[] = [
   },
   {
     _id: "dm-press-003",
-    name: "Hydraulic Press HP-250T",
+    name: "Machine 3",
     maxPowerConsumption: 45,
     downtimeThreshold: 8,
     cuttingThreshold: 28,
@@ -42,7 +42,7 @@ export const DEMO_MACHINES: DemoMachine[] = [
   },
   {
     _id: "dm-weld-004",
-    name: "Robotic Welder Station RW-2",
+    name: "Machine 4",
     maxPowerConsumption: 12,
     downtimeThreshold: 2,
     cuttingThreshold: 7,
@@ -52,7 +52,7 @@ export const DEMO_MACHINES: DemoMachine[] = [
   },
   {
     _id: "dm-mill-005",
-    name: "CNC Turning Center TC-400",
+    name: "Machine 5",
     maxPowerConsumption: 22,
     downtimeThreshold: 4,
     cuttingThreshold: 13,

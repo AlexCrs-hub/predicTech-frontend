@@ -6,6 +6,7 @@ import { Machine } from "@/lib/components/machineList/types";
 import { getMachineUtilization } from "@/lib/utils/machineSimulation";
 import { useWebSocket } from "@/context/WebSocketContext";
 import { downloadCsv } from "@/lib/utils/exportCsv";
+import { fetchUtilization, fetchCycles, fetchCutting, fetchDowntimeHours } from "@/lib/api/metricsApi";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, LineChart, Line,
@@ -27,6 +28,15 @@ const COST_PERIODS = [
   { label: "1 month", days: 30 },
 ] as const;
 type CostPeriod = typeof COST_PERIODS[number];
+
+// ── Per-machine real metrics (fetched after machine list loads) ───────────────
+type MachineMetric = {
+  utilization: number;
+  cycles: number;
+  cuttingHours: number;
+  cuttingPct: number;
+  downtimeHours: number;
+};
 
 function buildCostData(machines: Machine[], days: number): { date: string; cost: number }[] {
   const today = new Date();
@@ -58,7 +68,22 @@ const STATUS_BARS = [
 ] as const;
 type StatusKey = typeof STATUS_BARS[number]["key"];
 
-function computeHours(machineId: string, totalHours: number): Record<StatusKey, number> {
+function computeHours(machineId: string, totalHours: number, real?: MachineMetric): Record<StatusKey, number> {
+  if (real) {
+    const f = totalHours / 24; // scale from 1-day base
+    const cutting    = +(real.cuttingHours * f).toFixed(1);
+    const dt         = +(real.downtimeHours * f).toFixed(1);
+    const runtime    = +((real.utilization / 100) * totalHours).toFixed(1);
+    const reloading  = +Math.max(0, (runtime - cutting) * 0.15).toFixed(1);
+    const idle       = +Math.max(0, runtime - cutting - reloading).toFixed(1);
+    return {
+      cutting,
+      reloading,
+      idle,
+      plannedDT:   +(dt * 0.55).toFixed(1),
+      unplannedDT: +(dt * 0.45).toFixed(1),
+    };
+  }
   const u = getMachineUtilization(machineId);
   const runtime   = (u.runtimePct / 100) * totalHours;
   const cutting   = (u.cuttingPct / 100) * runtime;
@@ -194,6 +219,7 @@ function InsightBar({ insights }: { insights: Insight[] }) {
 // ── Page ─────────────────────────────────────────────────────────────────────
 export default function OverviewPage() {
   const [machines, setMachines] = useState<Machine[]>([]);
+  const [machineMetrics, setMachineMetrics] = useState<Record<string, MachineMetric>>({});
   const [machineStatus, setMachineStatus] = useState<"loading" | "ok" | "auth" | "empty" | "error">("loading");
   const [period, setPeriod] = useState<Period>(PERIODS[0]);
   const [selectedMachine, setSelectedMachine] = useState<string>("all");
@@ -213,10 +239,45 @@ export default function OverviewPage() {
       .catch(() => setMachineStatus("error"));
   }, []);
 
+  // Fetch real per-machine metrics (intercepted in demo mode)
+  useEffect(() => {
+    if (machines.length === 0) return;
+    Promise.all(
+      machines.map(async (m) => {
+        const [util, cyc, cut, dt] = await Promise.allSettled([
+          fetchUtilization(m._id, "day"),
+          fetchCycles(m._id, "day"),
+          fetchCutting(m._id, "day"),
+          fetchDowntimeHours(m._id, "day"),
+        ]);
+        const sim = getMachineUtilization(m._id);
+        return {
+          id: m._id,
+          utilization:  util.status === "fulfilled" ? util.value.utilizationPercentage : sim.runtimePct,
+          cycles:       cyc.status  === "fulfilled" ? cyc.value.cycles                : sim.cycles,
+          cuttingHours: cut.status  === "fulfilled" ? cut.value.cuttingHours          : 0,
+          cuttingPct:   cut.status  === "fulfilled" ? cut.value.cuttingPercentage     : sim.cuttingPct,
+          downtimeHours:dt.status   === "fulfilled" ? dt.value.downtimeHours          : 0,
+        };
+      })
+    ).then((results) => {
+      setMachineMetrics(Object.fromEntries(results.map((r) => [r.id, r])));
+    });
+  }, [machines]);
+
   const activeReports = reports.filter((r) => r.status !== "fixed");
 
   const leaderboard = [...machines]
-    .map((m) => ({ ...m, utilPct: getMachineUtilization(m._id).runtimePct }))
+    .map((m) => {
+      const real = machineMetrics[m._id];
+      const sim  = getMachineUtilization(m._id);
+      return {
+        ...m,
+        utilPct:    real?.utilization ?? sim.runtimePct,
+        cuttingPct: real?.cuttingPct  ?? sim.cuttingPct,
+        cycles:     real?.cycles      ?? sim.cycles,
+      };
+    })
     .sort((a, b) => b.utilPct - a.utilPct);
 
   const sourceMachines =
@@ -226,7 +287,7 @@ export default function OverviewPage() {
 
   const chartData = STATUS_BARS.map(({ key, label, color }) => {
     const total = sourceMachines.reduce(
-      (sum, m) => sum + computeHours(m._id, period.hours)[key],
+      (sum, m) => sum + computeHours(m._id, period.hours, machineMetrics[m._id])[key],
       0,
     );
     return { name: label, value: +total.toFixed(1), color };
@@ -264,10 +325,7 @@ export default function OverviewPage() {
   const exportLeaderboard = () => {
     downloadCsv("utilization_leaderboard.csv", [
       ["Machine", "Runtime %", "Cutting %", "Cycles"],
-      ...leaderboard.map((m) => {
-        const u = getMachineUtilization(m._id);
-        return [m.name, u.runtimePct, u.cuttingPct, u.cycles];
-      }),
+      ...leaderboard.map((m) => [m.name, m.utilPct.toFixed(1), m.cuttingPct.toFixed(1), m.cycles]),
     ]);
   };
 
@@ -480,29 +538,26 @@ export default function OverviewPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-zinc-800 bg-white dark:bg-zinc-900">
-                    {leaderboard.map((m, i) => {
-                      const u = getMachineUtilization(m._id);
-                      return (
-                        <tr key={m._id} className="hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors">
-                          <td className="px-3 py-2 text-gray-400 dark:text-zinc-600 font-mono">{i + 1}</td>
-                          <td className="px-3 py-2 text-gray-900 dark:text-zinc-100">
-                            <Link to={`/app/machine?machineId=${m._id}`} className="font-medium hover:text-blue-600 dark:hover:text-blue-400">
-                              {m.name}
-                            </Link>
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <div className="w-16 h-1.5 rounded-full bg-gray-100 dark:bg-zinc-700 overflow-hidden">
-                                <div className="h-full bg-green-500 rounded-full" style={{ width: `${u.runtimePct}%` }} />
-                              </div>
-                              <span className="font-semibold tabular-nums text-gray-900 dark:text-zinc-100">{u.runtimePct}%</span>
+                    {leaderboard.map((m, i) => (
+                      <tr key={m._id} className="hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors">
+                        <td className="px-3 py-2 text-gray-400 dark:text-zinc-600 font-mono">{i + 1}</td>
+                        <td className="px-3 py-2 text-gray-900 dark:text-zinc-100">
+                          <Link to={`/app/machine?machineId=${m._id}`} className="font-medium hover:text-blue-600 dark:hover:text-blue-400">
+                            {m.name}
+                          </Link>
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <div className="w-16 h-1.5 rounded-full bg-gray-100 dark:bg-zinc-700 overflow-hidden">
+                              <div className="h-full bg-green-500 rounded-full" style={{ width: `${m.utilPct}%` }} />
                             </div>
-                          </td>
-                          <td className="px-3 py-2 text-right text-gray-600 dark:text-zinc-400 tabular-nums">{u.cuttingPct}%</td>
-                          <td className="px-3 py-2 text-right font-semibold tabular-nums text-gray-900 dark:text-zinc-100">{u.cycles}</td>
-                        </tr>
-                      );
-                    })}
+                            <span className="font-semibold tabular-nums text-gray-900 dark:text-zinc-100">{m.utilPct.toFixed(1)}%</span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-right text-gray-600 dark:text-zinc-400 tabular-nums">{m.cuttingPct.toFixed(1)}%</td>
+                        <td className="px-3 py-2 text-right font-semibold tabular-nums text-gray-900 dark:text-zinc-100">{m.cycles}</td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
