@@ -62,6 +62,83 @@ if (IS_DEMO) {
     };
     localStorage.setItem("user", JSON.stringify(demoUser));
   }
+
+  // Pre-populate maintenance tickets so the Overview section is not empty
+  if (!localStorage.getItem("predictech_reports")) {
+    const now = Date.now();
+    const tickets = [
+      {
+        id: `demo-t1`,
+        machineId: "dm-press-003",
+        machineName: "Machine 3",
+        sensorName: "Power Sensor",
+        value: 51.2,
+        threshold: 45,
+        timestamp: new Date(now - 3 * 3600_000).toISOString(),
+        comment: "Power spike detected during press cycle — hydraulic pressure may need calibration.",
+        sentAt: new Date(now - 3 * 3600_000).toISOString(),
+        status: "in_progress",
+        statusHistory: [
+          { status: "new",         comment: "Report created",                          changedAt: new Date(now - 3 * 3600_000).toISOString() },
+          { status: "in_progress", comment: "Technician assigned. Checking hydraulics.", changedAt: new Date(now - 2 * 3600_000).toISOString() },
+        ],
+        escalation: null,
+      },
+      {
+        id: `demo-t2`,
+        machineId: "dm-weld-004",
+        machineName: "Machine 4",
+        sensorName: "Power Sensor",
+        value: 0.8,
+        threshold: 2,
+        timestamp: new Date(now - 28 * 3600_000).toISOString(),
+        comment: "Machine went below idle threshold during shift — possible unexpected shutdown.",
+        sentAt: new Date(now - 28 * 3600_000).toISOString(),
+        status: "needs_more_time",
+        statusHistory: [
+          { status: "new",              comment: "Report created",                             changedAt: new Date(now - 28 * 3600_000).toISOString() },
+          { status: "in_progress",      comment: "Investigating power supply unit.",            changedAt: new Date(now - 26 * 3600_000).toISOString() },
+          { status: "needs_more_time",  comment: "PSU replaced, monitoring for recurrence.",   changedAt: new Date(now - 10 * 3600_000).toISOString() },
+        ],
+        escalation: null,
+      },
+      {
+        id: `demo-t3`,
+        machineId: "dm-laser-001",
+        machineName: "Machine 1",
+        sensorName: "Power Sensor",
+        value: 27.4,
+        threshold: 25,
+        timestamp: new Date(now - 72 * 3600_000).toISOString(),
+        comment: "Laser head overload — cooling fan noise reported by operator.",
+        sentAt: new Date(now - 72 * 3600_000).toISOString(),
+        status: "fixed",
+        statusHistory: [
+          { status: "new",         comment: "Report created",                         changedAt: new Date(now - 72 * 3600_000).toISOString() },
+          { status: "in_progress", comment: "Cooling fan replaced.",                  changedAt: new Date(now - 70 * 3600_000).toISOString() },
+          { status: "fixed",       comment: "Issue resolved. · Maintenance duration: 1h 45m", changedAt: new Date(now - 68 * 3600_000).toISOString() },
+        ],
+        escalation: null,
+      },
+      {
+        id: `demo-t4`,
+        machineId: "dm-cnc-002",
+        machineName: "Machine 2",
+        sensorName: "Power Sensor",
+        value: 19.8,
+        threshold: 18,
+        timestamp: new Date(now - 5 * 3600_000).toISOString(),
+        comment: "Spindle load exceeded rated power during roughing pass.",
+        sentAt: new Date(now - 5 * 3600_000).toISOString(),
+        status: "new",
+        statusHistory: [
+          { status: "new", comment: "Report created", changedAt: new Date(now - 5 * 3600_000).toISOString() },
+        ],
+        escalation: null,
+      },
+    ];
+    localStorage.setItem("predictech_reports", JSON.stringify(tickets));
+  }
 }
 
 const WsWrapper = IS_DEMO ? DemoWebSocketProvider : WebSocketProvider;
