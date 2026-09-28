@@ -1,38 +1,31 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { useNotifications } from "@/context/NotificationContext";
+import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
+import { useNotifications, Report, ReportStatus } from "@/context/NotificationContext";
 import { fetchAllMachines } from "@/lib/api/machineApi";
 import { Machine } from "@/lib/components/machineList/types";
+import { getMachineUtilization } from "@/lib/utils/machineSimulation";
 import { useWebSocket } from "@/context/WebSocketContext";
 import { downloadCsv } from "@/lib/utils/exportCsv";
 import { fetchUtilization, fetchCycles, fetchCutting, fetchDowntimeHours } from "@/lib/api/metricsApi";
 import {
-  XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, LineChart, Line,
-  PieChart, Pie, Cell, Sector,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, Cell, LineChart, Line,
 } from "recharts";
+import { Download } from "lucide-react";
 
-const ENERGY_RATE = 0.18; // SAR/kWh
-const TZ = "Asia/Riyadh";
-const fmtTime = (d: Date) =>
-  d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: TZ });
-
-const WINDOW_PRESETS = [
-  { label: "5m",  secs: 300   },
-  { label: "15m", secs: 900   },
-  { label: "1h",  secs: 3600  },
-  { label: "6h",  secs: 21600 },
+// ── Period options ────────────────────────────────────────────────────────────
+const PERIODS = [
+  { label: "1 day",   hours: 24   },
+  { label: "7 days",  hours: 168  },
+  { label: "1 month", hours: 720  },
 ] as const;
-type WindowPreset = typeof WINDOW_PRESETS[number];
+type Period = typeof PERIODS[number];
 
-type LivePoint = { t: string; v: number };
-
-const RANGE_OPTS = [
-  { label: "1h",  hours: 1    },
-  { label: "24h", hours: 24   },
-  { label: "7d",  hours: 168  },
-  { label: "30d", hours: 720  },
-  { label: "1y",  hours: 8760 },
+// ── Cost chart periods ────────────────────────────────────────────────────────
+const COST_PERIODS = [
+  { label: "1 day",   days: 1  },
+  { label: "7 days",  days: 7  },
+  { label: "1 month", days: 30 },
 ] as const;
 type CostPeriod = typeof COST_PERIODS[number];
 
@@ -125,14 +118,39 @@ const STATUS_LABEL: Record<ReportStatus, string> = {
   fixed: "Fixed",
 };
 
-const AVG_PERIODS = [
-  { label: "1h",  divH: 1   },
-  { label: "1d",  divH: 24  },
-  { label: "1w",  divH: 168 },
-  { label: "1mo", divH: 720 },
-] as const;
-type AvgPeriod = typeof AVG_PERIODS[number];
+const STATUS_BADGE: Record<ReportStatus, string> = {
+  new:             "bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-zinc-400 border-gray-300 dark:border-zinc-600",
+  in_progress:     "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border-blue-300 dark:border-blue-700",
+  needs_more_time: "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 border-orange-300 dark:border-orange-700",
+  fixed:           "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-300 dark:border-green-700",
+};
 
+const BORDER_ACCENT: Record<ReportStatus, string> = {
+  new:             "border-l-gray-400 dark:border-l-zinc-600",
+  in_progress:     "border-l-blue-500",
+  needs_more_time: "border-l-orange-500",
+  fixed:           "border-l-green-500",
+};
+
+function CompactReportCard({ report }: { report: Report }) {
+  return (
+    <Link to="/app/reports">
+      <div className={`rounded-md border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm overflow-hidden hover:shadow-md transition-shadow flex border-l-4 ${BORDER_ACCENT[report.status]}`}>
+        <div className="flex flex-col px-3 py-2 flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-semibold text-sm text-gray-900 dark:text-zinc-100 truncate">
+              {report.sensorName} — {report.machineName}
+            </span>
+            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border shrink-0 ${STATUS_BADGE[report.status]}`}>
+              {STATUS_LABEL[report.status]}
+            </span>
+          </div>
+          <span className="text-xs text-gray-500 dark:text-zinc-500 mt-0.5 truncate">{report.comment}</span>
+        </div>
+      </div>
+    </Link>
+  );
+}
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
@@ -142,6 +160,19 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
   );
 }
 
+function ExportBtn({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex items-center gap-1 text-xs text-gray-400 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors px-2 py-1 rounded border border-gray-200 dark:border-zinc-700 hover:border-blue-300 dark:hover:border-blue-700"
+    >
+      <Download className="size-3" />
+      Export
+    </button>
+  );
+}
+
+// ── KPI tile ─────────────────────────────────────────────────────────────────
 function KpiTile({
   label, value, sub, accent,
 }: { label: string; value: string; sub?: string; accent?: string }) {
@@ -185,65 +216,17 @@ function InsightBar({ insights }: { insights: Insight[] }) {
   );
 }
 
-// ── Aggregate energy period hook (SAR + kWh for KPI tiles) ───────────────────
-function useAggregatePeriod(
-  machines: Machine[],
-  windowHours: number,
-): { totalSAR: number; totalKwh: number; loading: boolean } {
-  const [totalSAR, setTotalSAR] = useState(0);
-  const [totalKwh, setTotalKwh] = useState(0);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (machines.length === 0) return;
-    const gran: "hour" | "day" = windowHours <= 720 ? "hour" : "day";
-    const to   = new Date();
-    const from = new Date(to.getTime() - windowHours * 3_600_000);
-    const durH = gran === "day" ? 24 : 1;
-
-    setLoading(true);
-    Promise.all(
-      machines.map((m) =>
-        fetchPowerTimeseries({
-          machineId: m._id,
-          from: from.toISOString(),
-          to: to.toISOString(),
-          granularity: gran,
-        }).catch((): { points: TimeseriesPoint[] } => ({ points: [] }))
-      )
-    )
-      .then((results) => {
-        let sar = 0;
-        let kwh = 0;
-        for (const res of results)
-          for (const p of res.points) {
-            const kw = p.avgPowerKw;
-            if (!Number.isFinite(kw) || kw < 0 || kw > 10_000) continue;
-            kwh += kw * durH;
-            sar += kw * durH * ENERGY_RATE;
-          }
-        setTotalSAR(Number.isFinite(sar) && sar >= 0 ? +sar.toFixed(2) : 0);
-        setTotalKwh(Number.isFinite(kwh) && kwh >= 0 ? +kwh.toFixed(2) : 0);
-      })
-      .finally(() => setLoading(false));
-  }, [machines.length, windowHours]);
-
-  return { totalSAR, totalKwh, loading };
-}
-
-// ── Page ──────────────────────────────────────────────────────────────────────
+// ── Page ─────────────────────────────────────────────────────────────────────
 export default function OverviewPage() {
   const [machines, setMachines] = useState<Machine[]>([]);
   const [machineMetrics, setMachineMetrics] = useState<Record<string, MachineMetric>>({});
   const [machineStatus, setMachineStatus] = useState<"loading" | "ok" | "auth" | "empty" | "error">("loading");
-  const [rangeOptEnergy, setRangeOptEnergy] = useState<RangeOpt>(RANGE_OPTS[2]);
-  const [rangeOptCost,   setRangeOptCost]   = useState<RangeOpt>(RANGE_OPTS[2]);
-  const [estPeriodEnergy, setEstPeriodEnergy] = useState<EstPeriod>(EST_PERIODS[0]);
-  const [estPeriodCost,   setEstPeriodCost]   = useState<EstPeriod>(EST_PERIODS[0]);
-  const [avgPeriodEnergy, setAvgPeriodEnergy] = useState<AvgPeriod>(AVG_PERIODS[0]);
-  const [avgPeriodCost,   setAvgPeriodCost]   = useState<AvgPeriod>(AVG_PERIODS[0]);
+  const [period, setPeriod] = useState<Period>(PERIODS[0]);
+  const [selectedMachine, setSelectedMachine] = useState<string>("all");
+  const [costPeriod, setCostPeriod] = useState<CostPeriod>(COST_PERIODS[1]);
+  const [dtFilter, setDtFilter] = useState("");
   const { reports } = useNotifications();
-  const { liveKw, machineStates } = useWebSocket();
+  const { liveKw } = useWebSocket();
 
   useEffect(() => {
     fetchAllMachines()
@@ -415,29 +398,30 @@ export default function OverviewPage() {
   return (
     <div className="w-full p-6 flex flex-col gap-6 bg-gray-50 dark:bg-zinc-950 min-h-screen">
       <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-zinc-50">Overview</h1>
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-zinc-50">Overview</h1>
-          {machines.length > 0 && (
-            <span className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-zinc-400">
-              <span className={`w-2 h-2 rounded-full shrink-0 ${
-                hasStateData && onlineCount > 0
-                  ? "bg-green-500 animate-pulse"
-                  : "bg-gray-300 dark:bg-zinc-600"
-              }`} />
-              {hasStateData ? `${onlineCount} / ${machines.length} online` : `${machines.length} machines`}
-              {activeReports.length > 0 && (
-                <span className="ml-0.5 text-amber-500 dark:text-amber-400">
-                  · {activeReports.length} ticket{activeReports.length !== 1 ? "s" : ""}
-                </span>
-              )}
-            </span>
-          )}
+          <div className="flex rounded-md border border-gray-200 dark:border-zinc-700 overflow-hidden">
+            {PERIODS.map((p) => (
+              <button
+                key={p.label}
+                className={`px-3 py-1.5 text-sm transition-colors ${
+                  period.label === p.label
+                    ? "bg-gray-900 dark:bg-zinc-100 text-white dark:text-zinc-900 font-medium"
+                    : "bg-white dark:bg-zinc-900 text-gray-600 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800"
+                }`}
+                onClick={() => setPeriod(p)}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <Link to="/app/bigscreen" className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+            Big screen →
+          </Link>
         </div>
-        <Link to="/app/bigscreen" className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
-          Big screen →
-        </Link>
       </div>
 
+      {/* ── status banners ── */}
       {machineStatus === "loading" && (
         <p className="text-sm text-gray-400 dark:text-zinc-500 animate-pulse">Loading machines…</p>
       )}
@@ -457,9 +441,13 @@ export default function OverviewPage() {
         </div>
       )}
 
-      {/* ── KPI tiles row 1 — energy ── */}
+      {/* ── KPI tiles ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {/* Live Power */}
+        <KpiTile
+          label="Machines"
+          value={String(machines.length)}
+          sub={`${activeReports.length} open ticket${activeReports.length !== 1 ? "s" : ""}`}
+        />
         <KpiTile
           label="Live Power"
           value={totalKw > 0 ? `${totalKw.toFixed(1)} kW` : "— kW"}
