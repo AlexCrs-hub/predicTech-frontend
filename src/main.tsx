@@ -41,15 +41,15 @@ import { DemoWebSocketProvider } from "./demo/DemoWebSocketProvider";
 if (IS_DEMO) {
   installDemoFetch();
 
-  // Pre-populate auth so PrivateRoute passes without a real login
-  if (!localStorage.getItem("user")) {
+  // Always overwrite — prevents stale/malformed real-session data from crashing the demo
+  {
     const demoUser = {
       message: "Demo login",
       success: true,
       user: {
         _id: "demo-user-001",
-        name: "Demo Admin",
-        email: "demo@predictech.io",
+        name: "Admin",
+        email: "admin@predictech.io",
         role: "admin",
         isVerified: true,
         createdAt: "2025-01-01T00:00:00.000Z",
@@ -143,32 +143,33 @@ if (IS_DEMO) {
 
 const WsWrapper = IS_DEMO ? DemoWebSocketProvider : WebSocketProvider;
 
-const router = createBrowserRouter(
-  [
-    { path: "/", element: <LandingPage />, errorElement: <NotFound /> },
-    { path: "/login", element: <LoginPage /> },
-    { path: "/register", element: <RegisterPage /> },
-    {
-      path: "/app",
-      element: <PrivateRoute />,
-      errorElement: <RouteErrorBoundary />,
-      children: [
-        { path: "/app", element: <ActiveMachineList /> },
-        { path: "/app/active-machines", element: <ActiveMachineList /> },
-        { path: "/app/add-machine", element: <AddMachinePage /> },
-        { path: "/app/report", element: <AddReportPage /> },
-        { path: "/app/reports", element: <ReportsPage /> },
-        { path: "/app/overview", element: <OverviewPage /> },
-        { path: "/app/contact", element: <ContactPage /> },
-        { path: "/app/bigscreen", element: <BigScreenPage /> },
-        { path: "/app/tickets", element: <TicketsPage /> },
-        { path: "/app/machine", element: <MachinePage /> },
-        { path: "/app/notification-groups", element: <NotificationGroupsPage /> },
-      ],
-    },
-  ],
-  IS_DEMO ? { basename: "/demo" } : undefined
-);
+const ROUTES = [
+  { path: "/", element: <LandingPage />, errorElement: <NotFound /> },
+  { path: "/login", element: <LoginPage /> },
+  { path: "/register", element: <RegisterPage /> },
+  {
+    path: "/app",
+    element: <PrivateRoute />,
+    errorElement: <RouteErrorBoundary />,
+    children: [
+      { path: "/app", element: <ActiveMachineList /> },
+      { path: "/app/active-machines", element: <ActiveMachineList /> },
+      { path: "/app/add-machine", element: <AddMachinePage /> },
+      { path: "/app/report", element: <AddReportPage /> },
+      { path: "/app/reports", element: <ReportsPage /> },
+      { path: "/app/overview", element: <OverviewPage /> },
+      { path: "/app/contact", element: <ContactPage /> },
+      { path: "/app/bigscreen", element: <BigScreenPage /> },
+      { path: "/app/tickets", element: <TicketsPage /> },
+      { path: "/app/machine", element: <MachinePage /> },
+      { path: "/app/notification-groups", element: <NotificationGroupsPage /> },
+    ],
+  },
+];
+
+// Demo → normal paths (/app, /login …)
+// Real → /test prefix  (/test/app, /test/login …)
+const router = createBrowserRouter(ROUTES, IS_DEMO ? undefined : { basename: "/test" });
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

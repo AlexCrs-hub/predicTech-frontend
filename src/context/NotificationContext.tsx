@@ -73,6 +73,13 @@ const loadReports = (): Report[] => {
 const saveReports = (reports: Report[]) =>
   localStorage.setItem(REPORTS_KEY, JSON.stringify(reports));
 
+export type BreachAlert = {
+  machineId: string;
+  machineName: string;
+  value: number;
+  threshold: number;
+};
+
 export type CreateTicketData = {
   machineId: string;
   machineName: string;
@@ -92,6 +99,9 @@ interface NotificationContextType {
   escalateReport: (id: string, level: EscalationLevel, note: string) => void;
   createTicket: (data: CreateTicketData) => void;
   clearAllReports: () => void;
+  breachAlerts: BreachAlert[];
+  addBreachAlert: (alert: BreachAlert) => void;
+  dismissBreachAlert: (machineId: string) => void;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
@@ -99,6 +109,7 @@ const NotificationContext = createContext<NotificationContextType | undefined>(u
 export const NotificationProvider = ({ children }: { children: ReactNode }) => {
   const [alerts, setAlerts] = useState<ThresholdAlert[]>([]);
   const [reports, setReports] = useState<Report[]>(loadReports);
+  const [breachAlerts, setBreachAlerts] = useState<BreachAlert[]>([]);
 
   const alertsRef = useRef(alerts);
   useEffect(() => { alertsRef.current = alerts; }, [alerts]);
@@ -188,6 +199,16 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
     saveReports([]);
   }, []);
 
+  const addBreachAlert = useCallback((alert: BreachAlert) => {
+    setBreachAlerts((prev) =>
+      prev.some((a) => a.machineId === alert.machineId) ? prev : [...prev, alert],
+    );
+  }, []);
+
+  const dismissBreachAlert = useCallback((machineId: string) => {
+    setBreachAlerts((prev) => prev.filter((a) => a.machineId !== machineId));
+  }, []);
+
   const createTicket = useCallback((data: CreateTicketData) => {
     const now = new Date().toISOString();
     const report: Report = {
@@ -213,7 +234,7 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <NotificationContext.Provider
-      value={{ alerts, addAlert, dismissAlert, sendReport, reports, updateReportStatus, escalateReport, createTicket, clearAllReports }}
+      value={{ alerts, addAlert, dismissAlert, sendReport, reports, updateReportStatus, escalateReport, createTicket, clearAllReports, breachAlerts, addBreachAlert, dismissBreachAlert }}
     >
       {children}
     </NotificationContext.Provider>
