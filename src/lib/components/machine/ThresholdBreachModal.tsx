@@ -1,54 +1,27 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/lib/components/ui/button";
 import { ALL_REASONS, REASON_LABEL, DowntimeReason } from "@/lib/api/downtimeRecordsApi";
+import type { BreachAlert } from "@/context/NotificationContext";
 
-export type BreachAlert = {
-  machineId: string;
-  machineName: string;
-  value: number;
-  threshold: number;
-};
+export type { BreachAlert };
 
 type Props = {
   alert: BreachAlert;
-  queueLength: number;
+  onClose: () => void;
   onLogReason: (machineId: string, reason: DowntimeReason) => void;
   onCreateTicket: (machineId: string, comment: string) => void;
-  onTimeout?: () => void;
 };
 
-const TIMEOUT_SECONDS = 60;
-
-export default function ThresholdBreachModal({ alert, queueLength, onLogReason, onCreateTicket, onTimeout }: Props) {
+export default function ThresholdBreachModal({ alert, onClose, onLogReason, onCreateTicket }: Props) {
   const [mode, setMode]       = useState<"idle" | "ticket">("idle");
   const [comment, setComment] = useState("");
-  const [remaining, setRemaining] = useState(TIMEOUT_SECONDS);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Reset timer whenever the alert changes (new machine)
   useEffect(() => {
-    setRemaining(TIMEOUT_SECONDS);
     setMode("idle");
     setComment("");
   }, [alert.machineId]);
 
-  // Countdown tick
-  useEffect(() => {
-    intervalRef.current = setInterval(() => {
-      setRemaining((prev) => {
-        if (prev <= 1) {
-          clearInterval(intervalRef.current!);
-          onTimeout?.();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(intervalRef.current!);
-  }, [alert.machineId, onTimeout]);
-
   const handleLogReason = (reason: DowntimeReason) => {
-    clearInterval(intervalRef.current!);
     onLogReason(alert.machineId, reason);
     setMode("idle");
     setComment("");
@@ -56,21 +29,16 @@ export default function ThresholdBreachModal({ alert, queueLength, onLogReason, 
 
   const handleCreateTicket = () => {
     if (!comment.trim()) return;
-    clearInterval(intervalRef.current!);
     onCreateTicket(alert.machineId, comment);
     setMode("idle");
     setComment("");
   };
 
-  // Arc progress for countdown ring (SVG circle)
-  const radius    = 16;
-  const circ      = 2 * Math.PI * radius;
-  const progress  = remaining / TIMEOUT_SECONDS;
-  const dashOffset = circ * (1 - progress);
-  const isUrgent  = remaining <= 15;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
       <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-2xl p-6 w-full max-w-md mx-4 flex flex-col gap-4">
 
         {/* Header */}
@@ -79,40 +47,15 @@ export default function ThresholdBreachModal({ alert, queueLength, onLogReason, 
             <p className="text-xs font-semibold uppercase tracking-wide text-red-500">Threshold Alert</p>
             <h2 className="text-lg font-bold text-gray-900 dark:text-zinc-50">{alert.machineName}</h2>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {queueLength > 0 && (
-              <span className="text-xs bg-orange-100 text-orange-700 border border-orange-200 px-2 py-1 rounded-full">
-                +{queueLength} more
-              </span>
-            )}
-            {/* Countdown ring */}
-            <div className="relative w-10 h-10 flex items-center justify-center">
-              <svg className="absolute inset-0 -rotate-90" width="40" height="40" viewBox="0 0 40 40">
-                <circle cx="20" cy="20" r={radius} fill="none" stroke="#e5e7eb" strokeWidth="3" />
-                <circle
-                  cx="20" cy="20" r={radius}
-                  fill="none"
-                  stroke={isUrgent ? "#ef4444" : "#f97316"}
-                  strokeWidth="3"
-                  strokeDasharray={circ}
-                  strokeDashoffset={dashOffset}
-                  strokeLinecap="round"
-                  className="transition-all duration-1000"
-                />
-              </svg>
-              <span className={`text-xs font-bold z-10 ${isUrgent ? "text-red-500" : "text-orange-500"}`}>
-                {remaining}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Urgency bar */}
-        <div className="h-1 rounded-full bg-gray-100 dark:bg-zinc-800 overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all duration-1000 ${isUrgent ? "bg-red-500" : "bg-orange-400"}`}
-            style={{ width: `${progress * 100}%` }}
-          />
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 dark:text-zinc-500 dark:hover:text-zinc-300 transition-colors p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800"
+            aria-label="Close"
+          >
+            <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+            </svg>
+          </button>
         </div>
 
         {/* Values */}

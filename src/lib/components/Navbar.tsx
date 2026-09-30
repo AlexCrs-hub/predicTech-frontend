@@ -123,7 +123,7 @@ export default function Navbar() {
 
           <div className="flex items-center gap-3 shrink-0">
             <ThemeToggle />
-            {userData?.user.name && (
+            {userData?.user?.name && (
               <ProfileDropdown name={userData.user.name} onLogout={handleLogout} />
             )}
           </div>

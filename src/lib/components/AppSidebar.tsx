@@ -1,5 +1,6 @@
 import ErrorCard from "./machine/ErrorCard";
 import NotificationModal from "./machine/NotificationModal";
+import ThresholdBreachModal from "./machine/ThresholdBreachModal";
 import {
   Sidebar,
   SidebarContent,
@@ -14,7 +15,13 @@ import { useWebSocket } from "@/context/WebSocketContext";
 import {
   useNotifications,
   ThresholdAlert,
+  BreachAlert,
 } from "@/context/NotificationContext";
+import {
+  fetchUnresolvedDowntime,
+  recordDowntimeReason,
+  DowntimeReason,
+} from "@/lib/api/downtimeRecordsApi";
 import { fetchAllMachines } from "@/lib/api/machineApi";
 import { Link } from "react-router-dom";
 import { Bell } from "lucide-react";
@@ -39,11 +46,12 @@ type SensorWarning = {
 
 export function AppSidebar() {
   const { readings, machineStates } = useWebSocket();
-  const { alerts } = useNotifications();
+  const { alerts, breachAlerts, dismissBreachAlert, createTicket } = useNotifications();
   const [machines, setMachines] = useState<SidebarMachine[]>([]);
   const [warnings, setWarnings] = useState<SensorWarning[]>([]);
   const [errors, setErrors] = useState<SensorWarning[]>([]);
   const [activeAlert, setActiveAlert] = useState<ThresholdAlert | null>(null);
+  const [openBreach, setOpenBreach] = useState<BreachAlert | null>(null);
 
   useEffect(() => {
     fetchAllMachines()
@@ -73,9 +81,7 @@ export function AppSidebar() {
         if (!machine) return;
         const value = Number(entry.value);
         if (Number.isNaN(value)) return;
-        const maxPower = Number(
-          machine.maxPowerConsumption ?? machine.max_power ?? 0,
-        );
+        const maxPower = Number(machine.maxPowerConsumption ?? machine.max_power ?? 0);
         if (maxPower > 0 && value > maxPower) {
           newWarnings.push({
             id: `${entry.machineId}-${entry.sensorName}-${Date.now()}-${Math.random()}`,
@@ -128,7 +134,33 @@ export function AppSidebar() {
     setErrors((prev) => prev.filter((item) => item.id !== id));
   };
 
-  const totalCount = alerts.length + warnings.length + errors.length;
+  const handleBreachLogReason = (machineId: string, reason: DowntimeReason) => {
+    dismissBreachAlert(machineId);
+    setOpenBreach(null);
+    fetchUnresolvedDowntime(machineId)
+      .then((records) => {
+        const latest = records.find((r) => !r.reasonRecorded);
+        if (latest) recordDowntimeReason(latest._id, reason, "unplanned").catch(() => {});
+      })
+      .catch(() => {});
+  };
+
+  const handleBreachCreateTicket = (machineId: string, comment: string) => {
+    const alert = breachAlerts.find((a) => a.machineId === machineId);
+    if (!alert) return;
+    createTicket({
+      machineId,
+      machineName: alert.machineName,
+      sensorName: "Power",
+      value: alert.value,
+      threshold: alert.threshold,
+      comment,
+    });
+    dismissBreachAlert(machineId);
+    setOpenBreach(null);
+  };
+
+  const totalCount = alerts.length + breachAlerts.length + warnings.length + errors.length;
 
   return (
     <>
@@ -148,6 +180,34 @@ export function AppSidebar() {
                 </div>
 
                 <ScrollArea className="pb-16">
+                  {/* Downtime breach alerts — click to manage */}
+                  {breachAlerts.map((alert) => (
+                    <SidebarMenuItem key={alert.machineId}>
+                      <div className="flex items-start gap-2 p-2">
+                        <button
+                          type="button"
+                          className="flex-1 text-left hover:opacity-80 transition-opacity"
+                          onClick={() => setOpenBreach(alert)}
+                        >
+                          <ErrorCard
+                            machineName={alert.machineName}
+                            isWarning={false}
+                            message={`Power dropped to ${alert.value.toFixed(1)} kW (threshold ${alert.threshold} kW)`}
+                          />
+                          <p className="text-xs text-muted-foreground mt-1 px-1">Click to manage</p>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => dismissBreachAlert(alert.machineId)}
+                          className="rounded-full p-1 text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:hover:bg-gray-700"
+                          aria-label="Dismiss"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </SidebarMenuItem>
+                  ))}
+
                   {/* Threshold alerts — persistent, click to manage */}
                   {alerts.map((alert) => (
                     <SidebarMenuItem key={alert.id}>
@@ -161,9 +221,7 @@ export function AppSidebar() {
                           isWarning={false}
                           message={`${alert.sensorName} = ${alert.value} (below threshold ${alert.threshold})`}
                         />
-                        <p className="text-xs text-muted-foreground mt-1 px-1">
-                          Click to manage
-                        </p>
+                        <p className="text-xs text-muted-foreground mt-1 px-1">Click to manage</p>
                       </button>
                     </SidebarMenuItem>
                   ))}
@@ -196,9 +254,7 @@ export function AppSidebar() {
                   ))}
 
                   {totalCount === 0 && (
-                    <div className="p-4 text-sm text-gray-500">
-                      No notifications
-                    </div>
+                    <div className="p-4 text-sm text-gray-500">No notifications</div>
                   )}
                 </ScrollArea>
               </SidebarMenu>
@@ -208,9 +264,14 @@ export function AppSidebar() {
       </Sidebar>
 
       {activeAlert && (
-        <NotificationModal
-          alert={activeAlert}
-          onClose={() => setActiveAlert(null)}
+        <NotificationModal alert={activeAlert} onClose={() => setActiveAlert(null)} />
+      )}
+      {openBreach && (
+        <ThresholdBreachModal
+          alert={openBreach}
+          onClose={() => setOpenBreach(null)}
+          onLogReason={handleBreachLogReason}
+          onCreateTicket={handleBreachCreateTicket}
         />
       )}
     </>

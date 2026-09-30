@@ -1,5 +1,6 @@
 import { fetchMachineById } from "@/lib/api/machineApi";
 import { useWebSocket } from "@/context/WebSocketContext";
+import { useNotifications } from "@/context/NotificationContext";
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { Machine } from "@/lib/components/machineList/types";
@@ -125,6 +126,53 @@ function BigNumber({ value, unit }: { value: React.ReactNode; unit?: string }) {
           {unit}
         </span>
       )}
+    </div>
+  );
+}
+
+// ── Create Ticket modal ───────────────────────────────────────────────────────
+
+function CreateTicketModal({
+  machineName,
+  onClose,
+  onSubmit,
+}: {
+  machineName: string;
+  onClose: () => void;
+  onSubmit: (comment: string) => void;
+}) {
+  const [comment, setComment] = useState("");
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-zinc-700 w-full max-w-md mx-4 p-6 flex flex-col gap-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div>
+          <h2 className="text-base font-bold text-gray-900 dark:text-zinc-50">Create Maintenance Ticket</h2>
+          <p className="text-xs text-gray-500 dark:text-zinc-400 mt-1">Machine: <span className="font-semibold">{machineName}</span></p>
+        </div>
+        <textarea
+          autoFocus
+          rows={4}
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          placeholder="Describe the issue or maintenance needed…"
+          className="text-sm rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 px-3 py-2 text-gray-800 dark:text-zinc-200 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+        />
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="text-sm px-4 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors">
+            Cancel
+          </button>
+          <button
+            disabled={!comment.trim()}
+            onClick={() => { onSubmit(comment.trim()); onClose(); }}
+            className="text-sm px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            Create Ticket
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -389,11 +437,17 @@ export default function MachinePage() {
   });
   const [dtStats, setDtStats] = useState<DowntimeStats | null>(null);
   const [liveHistory, setLiveHistory] = useState<LivePoint[]>([]);
+  const [ticketModal, setTicketModal] = useState(false);
+  const { createTicket } = useNotifications();
   const { search } = useLocation();
   const machineId = new URLSearchParams(search).get("machineId") || "";
 
-  const wsState = machineStates[machineId];
-  const isRunning = wsState?.state?.toLowerCase() === "on";
+  const wsState   = machineStates[machineId];
+  const wsStatus  = wsState?.state ?? "DISCONNECTED";
+  const isRunning = wsStatus === "ON" && wsState?.health === "HEALTHY";
+  const isIdle    = wsStatus === "IDLE";
+  const statusLabel = isRunning ? "Running" : isIdle ? "Idle" : "Offline";
+  const statusColor = isRunning ? "bg-green-500" : isIdle ? "bg-amber-400" : "bg-zinc-700";
 
   const livePower   = liveKw[machineId] || 0;
   const costPerHour = livePower * ENERGY_RATE;
@@ -516,7 +570,7 @@ export default function MachinePage() {
       {/* header */}
       <div className="flex items-center gap-3 px-6 py-4 bg-blue-400 border-b border-gray-800">
         <span
-          className={`w-2 h-2 rounded-full shrink-0 ${isRunning ? "bg-green-400" : "bg-zinc-500"}`}
+          className={`w-2 h-2 rounded-full shrink-0 ${isRunning ? "bg-green-400" : isIdle ? "bg-amber-300" : "bg-zinc-500"}`}
         />
         <h1 className="text-base font-bold tracking-tight text-white flex-1">
           {machine ? (
@@ -526,20 +580,20 @@ export default function MachinePage() {
           )}
         </h1>
         <button
+          onClick={() => setTicketModal(true)}
+          className="text-xs px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white border border-white/30 transition-colors font-medium"
+        >
+          + Ticket
+        </button>
+        <button
           onClick={handleExport}
           className="text-xs px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white border border-white/30 transition-colors font-medium"
         >
           ↓ Export CSV
         </button>
-        <span
-          className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${isRunning ? "bg-green-500" : "bg-zinc-700"}`}
-        >
-          <span
-            className={`w-1.5 h-1.5 rounded-full ${isRunning ? "bg-green-200" : "bg-zinc-500"}`}
-          />
-          <span className="text-white">
-            {isRunning ? "Running" : "Offline"}
-          </span>
+        <span className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${statusColor}`}>
+          <span className={`w-1.5 h-1.5 rounded-full ${isRunning ? "bg-green-200" : isIdle ? "bg-amber-200" : "bg-zinc-500"}`} />
+          <span className="text-white">{statusLabel}</span>
         </span>
         <span className="text-xs text-white/60 ml-1">
           Morning Shift · 06:00–
@@ -790,6 +844,24 @@ export default function MachinePage() {
           segment={timelineModal}
           onClose={() => setTimelineModal(null)}
           onLogged={() => setDtRefreshKey((k) => k + 1)}
+        />
+      )}
+
+      {/* create ticket modal */}
+      {ticketModal && (
+        <CreateTicketModal
+          machineName={machine?.name ?? machineId}
+          onClose={() => setTicketModal(false)}
+          onSubmit={(comment) =>
+            createTicket({
+              machineId,
+              machineName: machine?.name ?? machineId,
+              sensorName: "Power Sensor",
+              value: livePower,
+              threshold: machine?.downtimeThreshold ?? 0,
+              comment,
+            })
+          }
         />
       )}
     </div>

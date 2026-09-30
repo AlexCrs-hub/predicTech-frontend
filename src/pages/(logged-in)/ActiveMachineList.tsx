@@ -1,30 +1,32 @@
 import { useState, useEffect, useRef } from "react";
 import { fetchAllMachines } from "@/lib/api/machineApi";
 import MachineListElement from "@/lib/components/machineList/MachineListElement";
-import ThresholdBreachModal, { BreachAlert } from "@/lib/components/machine/ThresholdBreachModal";
 import { Machine } from "@/lib/components/machineList/types";
 import { useWebSocket } from "@/context/WebSocketContext";
 import { useNotifications, Report } from "@/context/NotificationContext";
 import { startWorkInterval, stopWorkInterval } from "@/lib/api/workIntervalApi";
-import { fetchUnresolvedDowntime, recordDowntimeReason, DowntimeReason } from "@/lib/api/downtimeRecordsApi";
 import { fetchUtilization, fetchCycles } from "@/lib/api/metricsApi";
+import { getMachineUtilization } from "@/lib/utils/machineSimulation";
 
 type StateOverride = { state: Machine["currentState"]; since?: number };
 
 export default function ActiveMachineList() {
-  const [machines, setMachines]               = useState<Machine[]>([]);
-  const [fetchStatus, setFetchStatus]         = useState<"loading" | "ok" | "auth" | "empty" | "error">("loading");
-  const [alertQueue, setAlertQueue]           = useState<BreachAlert[]>([]);
+  const [machines, setMachines] = useState<Machine[]>([]);
+  const [fetchStatus, setFetchStatus] = useState<
+    "loading" | "ok" | "auth" | "empty" | "error"
+  >("loading");
   const [activeIntervals, setActiveIntervals] = useState<Set<string>>(new Set());
-  const [machineMetrics, setMachineMetrics]   = useState<Record<string, { utilization: number; cycles: number }>>({});
-  const [overrides, setOverrides]             = useState<Record<string, StateOverride>>({});
+  const [machineMetrics, setMachineMetrics] = useState<
+    Record<string, { utilization: number; cycles: number }>
+  >({});
+  const [overrides, setOverrides] = useState<Record<string, StateOverride>>({});
 
-  const prevWsRef      = useRef<Record<string, { state: string; health: string }>>({});
-  const alertedRef     = useRef<Set<string>>(new Set());
+  const prevWsRef   = useRef<Record<string, { state: string; health: string }>>({});
+  const alertedRef  = useRef<Set<string>>(new Set());
   const prevReportsRef = useRef<Report[]>([]);
 
   const { machineStates, liveKw } = useWebSocket();
-  const { createTicket, reports }  = useNotifications();
+  const { reports, addBreachAlert } = useNotifications();
 
   // ── load machines ─────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -41,19 +43,32 @@ export default function ActiveMachineList() {
   // ── fetch real metrics for each machine (day period) ──────────────────────────
   useEffect(() => {
     if (machines.length === 0) return;
+
+    const simMap: Record<string, { utilization: number; cycles: number }> = {};
+    machines.forEach((m) => {
+      const s = getMachineUtilization(m._id);
+      simMap[m._id] = { utilization: s.runtimePct, cycles: s.cycles };
+    });
+    setMachineMetrics(simMap);
+
     Promise.allSettled(
       machines.map((m) =>
-        Promise.all([
-          fetchUtilization(m._id, "day"),
-          fetchCycles(m._id, "day"),
-        ]).then(([u, c]) => ({ id: m._id, utilization: u.utilizationPercentage, cycles: c.cycles }))
-      )
+        Promise.all([fetchUtilization(m._id, "day"), fetchCycles(m._id, "day")])
+          .then(([u, c]) => ({
+            id: m._id,
+            utilization: u.utilizationPercentage > 0 ? u.utilizationPercentage : simMap[m._id].utilization,
+            cycles: c.cycles > 0 ? c.cycles : simMap[m._id].cycles,
+          })),
+      ),
     ).then((results) => {
-      const map: Record<string, { utilization: number; cycles: number }> = {};
-      results.forEach((r) => {
-        if (r.status === "fulfilled") map[r.value.id] = { utilization: r.value.utilization, cycles: r.value.cycles };
+      setMachineMetrics((prev) => {
+        const map = { ...prev };
+        results.forEach((r) => {
+          if (r.status === "fulfilled")
+            map[r.value.id] = { utilization: r.value.utilization, cycles: r.value.cycles };
+        });
+        return map;
       });
-      setMachineMetrics(map);
     });
   }, [machines]);
 
@@ -64,7 +79,6 @@ export default function ActiveMachineList() {
     machines.forEach((machine) => {
       const prev = prevWsRef.current[machine._id];
       const curr = machineStates[machine._id];
-
       if (!curr) return;
 
       if (!prev) {
@@ -77,19 +91,19 @@ export default function ActiveMachineList() {
 
       if (wasOn && !isNowOn && !alertedRef.current.has(machine._id)) {
         alertedRef.current.add(machine._id);
-        setAlertQueue((q) => [...q, {
-          machineId:   machine._id,
+        addBreachAlert({
+          machineId: machine._id,
           machineName: machine.name,
-          value:       liveKw[machine._id] ?? 0,
-          threshold:   machine.downtimeThreshold ?? 0,
-        }]);
+          value: liveKw[machine._id] ?? 0,
+          threshold: machine.downtimeThreshold ?? 0,
+        });
       }
 
       if (!wasOn && isNowOn) alertedRef.current.delete(machine._id);
 
       prevWsRef.current[machine._id] = { state: curr.state, health: curr.health };
     });
-  }, [machineStates, machines, liveKw]);
+  }, [machineStates, machines, liveKw, addBreachAlert]);
 
   // ── ticket → maintenance state ─────────────────────────────────────────────────
   useEffect(() => {
@@ -112,53 +126,23 @@ export default function ActiveMachineList() {
 
   // ── work interval handlers ─────────────────────────────────────────────────────
   const handleStart = (id: string): Promise<boolean> =>
-    startWorkInterval(id).then((r) => {
-      if (r !== null) setActiveIntervals((prev) => new Set(prev).add(id));
-      return r !== null;
-    }).catch(() => false);
+    startWorkInterval(id)
+      .then((r) => { if (r !== null) setActiveIntervals((prev) => new Set(prev).add(id)); return r !== null; })
+      .catch(() => false);
 
   const handleStop = (id: string): Promise<boolean> =>
-    stopWorkInterval(id).then((r) => {
-      if (r !== null) setActiveIntervals((prev) => { const s = new Set(prev); s.delete(id); return s; });
-      return r !== null;
-    }).catch(() => false);
+    stopWorkInterval(id)
+      .then((r) => {
+        if (r !== null) setActiveIntervals((prev) => { const s = new Set(prev); s.delete(id); return s; });
+        return r !== null;
+      })
+      .catch(() => false);
 
   const deriveState = (machine: Machine): Machine["currentState"] => {
     if (overrides[machine._id]) return overrides[machine._id].state;
     const ws = machineStates[machine._id];
     if (ws?.state === "ON" && ws?.health === "HEALTHY") return "on";
     return "idle";
-  };
-
-  // ── alert handling ─────────────────────────────────────────────────────────────
-  const dismissCurrent = () => {
-    const alert = alertQueue[0];
-    if (alert) alertedRef.current.delete(alert.machineId);
-    setAlertQueue((prev) => prev.slice(1));
-  };
-
-  const handleLogReason = (machineId: string, reason: DowntimeReason) => {
-    dismissCurrent();
-    fetchUnresolvedDowntime(machineId)
-      .then((records) => {
-        const latest = records.find((r) => !r.reasonRecorded);
-        if (latest) recordDowntimeReason(latest._id, reason, "unplanned").catch(() => {});
-      })
-      .catch(() => {});
-  };
-
-  const handleCreateTicket = (machineId: string, comment: string) => {
-    const machine = machines.find((m) => m._id === machineId);
-    if (!machine) return;
-    createTicket({
-      machineId,
-      machineName: machine.name,
-      sensorName:  "Power",
-      value:       liveKw[machineId] ?? 0,
-      threshold:   machine.downtimeThreshold ?? 0,
-      comment,
-    });
-    dismissCurrent();
   };
 
   // ── grouping ───────────────────────────────────────────────────────────────────
@@ -190,8 +174,11 @@ export default function ActiveMachineList() {
           intervalActive={activeIntervals.has(machine._id)}
           utilizationPct={machineMetrics[machine._id]?.utilization}
           realCycles={machineMetrics[machine._id]?.cycles}
-          maintenanceSince={overrides[machine._id]?.state === "in maintenance"
-            ? overrides[machine._id].since : undefined}
+          maintenanceSince={
+            overrides[machine._id]?.state === "in maintenance"
+              ? overrides[machine._id].since
+              : undefined
+          }
         />
       ))}
     </div>
@@ -207,7 +194,6 @@ export default function ActiveMachineList() {
 
   return (
     <div className="flex flex-col gap-8 pb-10 bg-gray-50 dark:bg-zinc-950 min-h-screen p-5">
-
       {withTickets.length > 0 && (
         <section>
           <SectionHeader label="Open tickets" count={withTickets.length} dot="bg-amber-400" />
@@ -242,16 +228,6 @@ export default function ActiveMachineList() {
       )}
       {fetchStatus === "empty" && (
         <p className="text-sm text-gray-400 dark:text-zinc-500">No machines found for this account.</p>
-      )}
-
-      {alertQueue[0] && (
-        <ThresholdBreachModal
-          alert={alertQueue[0]}
-          queueLength={alertQueue.length - 1}
-          onLogReason={handleLogReason}
-          onCreateTicket={handleCreateTicket}
-          onTimeout={dismissCurrent}
-        />
       )}
     </div>
   );
