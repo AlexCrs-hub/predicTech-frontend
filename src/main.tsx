@@ -11,7 +11,7 @@ function RouteErrorBoundary() {
     <div className="flex flex-col items-center justify-center min-h-screen gap-4 p-8 bg-gray-50 dark:bg-zinc-950">
       <h1 className="text-xl font-bold text-red-600 dark:text-red-400">Something went wrong</h1>
       <p className="text-sm text-gray-500 dark:text-zinc-400 max-w-md text-center">{error?.message ?? "Unknown error"}</p>
-      <a href="/app" className="text-sm text-blue-600 dark:text-blue-400 underline">← Back to machines</a>
+      <a href={window.location.pathname.startsWith("/demo") ? "/demo/app" : "/app"} className="text-sm text-blue-600 dark:text-blue-400 underline">← Back to machines</a>
     </div>
   );
 }
@@ -167,9 +167,9 @@ const ROUTES = [
   },
 ];
 
-// Demo → normal paths (/app, /login …)
-// Real → /test prefix  (/test/app, /test/login …)
-const router = createBrowserRouter(ROUTES, IS_DEMO ? undefined : { basename: "/test" });
+// Demo → /demo prefix  (/demo/app, /demo/login …)
+// Real → normal paths  (/app, /login …)
+const router = createBrowserRouter(ROUTES, IS_DEMO ? { basename: "/demo" } : undefined);
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
