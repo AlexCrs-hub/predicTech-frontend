@@ -1,5 +1,6 @@
 import { DEMO_MACHINES, DEMO_MACHINE_MAP, DEMO_METRICS } from "./machines";
 import type { ApiPeriod } from "@/lib/api/metricsApi";
+import type { DowntimeReason } from "@/lib/api/downtimeRecordsApi";
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -194,4 +195,138 @@ export function demoMachineById(id: string) {
   const machine = DEMO_MACHINE_MAP[id];
   if (!machine) return null;
   return { message: "Machine found.", machine };
+}
+
+// ── downtime records (in-memory, so reporting works in the demo) ──────────────
+
+type DemoDowntimeRecord = {
+  _id: string;
+  machine: string;
+  startedAt: string;
+  resolvedAt: string | null;
+  downtimeType: "planned" | "unplanned";
+  reason: DowntimeReason;
+  reasonRecorded: boolean;
+};
+
+// Machines with downtime still waiting for a reason (so the button is enabled)
+const DEMO_PENDING_MACHINES = new Set(["dm-cnc-002", "dm-weld-004"]);
+const DEMO_REASON_CYCLE: DowntimeReason[] = ["tool_change", "setup", "material_wait", "maintenance"];
+
+let demoDowntimeStore: DemoDowntimeRecord[] | null = null;
+
+function downtimeStore(): DemoDowntimeRecord[] {
+  if (demoDowntimeStore) return demoDowntimeStore;
+  const now = Date.now();
+  demoDowntimeStore = DEMO_MACHINES.flatMap((m, mi) => {
+    // three stops in the last ~10 h: offsets/durations in minutes, varied per machine
+    const stops = [
+      { agoMin: 560 - mi * 25, durMin: 18 + mi * 3 },
+      { agoMin: 300 - mi * 15, durMin: 11 + mi * 2 },
+      { agoMin: 95 - mi * 10,  durMin: 24 - mi * 2 },
+    ];
+    return stops.map((s, si) => {
+      const pending = DEMO_PENDING_MACHINES.has(m._id) && si > 0;
+      const start = now - s.agoMin * 60_000;
+      return {
+        _id: `demo-dt-${m._id}-${si}`,
+        machine: m._id,
+        startedAt: new Date(start).toISOString(),
+        resolvedAt: new Date(start + s.durMin * 60_000).toISOString(),
+        downtimeType: si === 1 ? "planned" : "unplanned",
+        reason: pending ? "other" : DEMO_REASON_CYCLE[(mi + si) % DEMO_REASON_CYCLE.length],
+        reasonRecorded: !pending,
+      } satisfies DemoDowntimeRecord;
+    });
+  });
+  return demoDowntimeStore;
+}
+
+const withDuration = (r: DemoDowntimeRecord) => ({
+  ...r,
+  durationMs: new Date(r.resolvedAt ?? Date.now()).getTime() - new Date(r.startedAt).getTime(),
+});
+
+export function demoReportableDowntime(machineId: string) {
+  return downtimeStore()
+    .filter((r) => r.machine === machineId && !r.reasonRecorded)
+    .map(withDuration)
+    .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+}
+
+export function demoReportableSummary() {
+  const counts: Record<string, number> = {};
+  downtimeStore().forEach((r) => {
+    if (!r.reasonRecorded) counts[r.machine] = (counts[r.machine] ?? 0) + 1;
+  });
+  return { counts, windowHours: 24, minDurationMs: 5 * 60_000 };
+}
+
+export function demoDowntimeTimeline(machineId: string, hours: number) {
+  const since = Date.now() - hours * 3_600_000;
+  return downtimeStore()
+    .filter((r) => r.machine === machineId && new Date(r.resolvedAt ?? Date.now()).getTime() >= since)
+    .map(withDuration)
+    .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+}
+
+export function demoRecordDowntimeReason(id: string, reason: DowntimeReason, downtimeType: "planned" | "unplanned") {
+  const r = downtimeStore().find((x) => x._id === id);
+  if (!r) return null;
+  r.reason = reason;
+  r.downtimeType = downtimeType ?? "unplanned";
+  r.reasonRecorded = true;
+  return withDuration(r);
+}
+
+// Historic share of downtime time per reason, used on top of the in-memory records
+const DEMO_BASE_SHARE: Partial<Record<DowntimeReason, number>> = {
+  tool_change: 0.34, material_wait: 0.22, micro_stop: 0.14, setup: 0.12, maintenance: 0.1, other: 0.08,
+};
+
+export function demoDowntimeBreakdown(period: ApiPeriod, machineId?: string) {
+  const machines = machineId ? DEMO_MACHINES.filter((m) => m._id === machineId) : DEMO_MACHINES;
+  const reasonMs: Partial<Record<DowntimeReason, { ms: number; count: number }>> = {};
+  const add = (reason: DowntimeReason, ms: number, count: number) => {
+    const e = reasonMs[reason] ?? { ms: 0, count: 0 };
+    reasonMs[reason] = { ms: e.ms + ms, count: e.count + count };
+  };
+
+  // older downtime (beyond the in-memory records) only for week/month
+  if (period !== "day") {
+    machines.forEach((m) => {
+      const hours = demoDowntime(m._id, period).downtimeHours - demoDowntime(m._id, "day").downtimeHours;
+      (Object.entries(DEMO_BASE_SHARE) as [DowntimeReason, number][]).forEach(([reason, share]) =>
+        add(reason, Math.max(0, hours) * share * 3_600_000, Math.round(share * 10 * periodMultiplier(period))),
+      );
+    });
+  }
+
+  const unreported = { ms: 0, count: 0 };
+  const typeMs = { planned: 0, unplanned: 0 };
+  downtimeStore()
+    .filter((r) => machines.some((m) => m._id === r.machine))
+    .forEach((r) => {
+      const { durationMs } = withDuration(r);
+      if (!r.reasonRecorded) { unreported.ms += durationMs; unreported.count += 1; return; }
+      add(r.reason, durationMs, 1);
+      typeMs[r.downtimeType] += durationMs;
+    });
+
+  const reasons = (Object.entries(reasonMs) as [DowntimeReason, { ms: number; count: number }][])
+    .map(([reason, v]) => ({ reason, ms: Math.round(v.ms), count: v.count }))
+    .sort((a, b) => b.ms - a.ms);
+  const totalMs = reasons.reduce((s, r) => s + r.ms, 0) + unreported.ms;
+  const now = new Date();
+  return {
+    period,
+    machineId: machineId ?? null,
+    from: new Date(now.getTime() - periodMultiplier(period) * 86_400_000).toISOString(),
+    to: now.toISOString(),
+    totalMs,
+    reasons,
+    unreported,
+    typeMs,
+    minDurationMs: 5 * 60_000,
+  };
 }

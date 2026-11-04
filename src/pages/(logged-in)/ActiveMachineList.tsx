@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { fetchAllMachines } from "@/lib/api/machineApi";
 import MachineListElement from "@/lib/components/machineList/MachineListElement";
 import { Machine } from "@/lib/components/machineList/types";
@@ -7,6 +7,9 @@ import { useNotifications, Report } from "@/context/NotificationContext";
 import { startWorkInterval, stopWorkInterval } from "@/lib/api/workIntervalApi";
 import { fetchUtilization, fetchCycles } from "@/lib/api/metricsApi";
 import { getMachineUtilization } from "@/lib/utils/machineSimulation";
+import { fetchReportableSummary } from "@/lib/api/downtimeRecordsApi";
+
+const DOWNTIME_POLL_MS = 60_000;
 
 type StateOverride = { state: Machine["currentState"]; since?: number };
 
@@ -20,6 +23,7 @@ export default function ActiveMachineList() {
     Record<string, { utilization: number; cycles: number }>
   >({});
   const [overrides, setOverrides] = useState<Record<string, StateOverride>>({});
+  const [downtimeCounts, setDowntimeCounts] = useState<Record<string, number>>({});
 
   const prevWsRef   = useRef<Record<string, { state: string; health: string }>>({});
   const alertedRef  = useRef<Set<string>>(new Set());
@@ -73,6 +77,19 @@ export default function ActiveMachineList() {
     });
   }, [machines]);
 
+  // ── unreported downtime per machine (drives the "Report downtime" buttons) ─────
+  const loadDowntimeCounts = useCallback(() => {
+    fetchReportableSummary()
+      .then((res) => setDowntimeCounts(res?.counts ?? {}))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    loadDowntimeCounts();
+    const id = setInterval(loadDowntimeCounts, DOWNTIME_POLL_MS);
+    return () => clearInterval(id);
+  }, [loadDowntimeCounts]);
+
   // ── automatic downtime detection via WebSocket state transitions ───────────────
   useEffect(() => {
     if (machines.length === 0) return;
@@ -87,8 +104,9 @@ export default function ActiveMachineList() {
         return;
       }
 
-      const wasOn   = prev.state === "ON" && prev.health === "HEALTHY";
-      const isNowOn = curr.state === "ON" && curr.health === "HEALTHY";
+      // "stale" is a short data gap, not a stop — only disconnected/idle counts as leaving "on"
+      const wasOn   = prev.state === "on" && prev.health !== "disconnected";
+      const isNowOn = curr.state === "on" && curr.health !== "disconnected";
 
       if (wasOn && !isNowOn && !alertedRef.current.has(machine._id)) {
         alertedRef.current.add(machine._id);
@@ -144,7 +162,7 @@ export default function ActiveMachineList() {
     const ws = machineStates[machine._id];
     if (
       ws?.state?.toLowerCase() === "on" &&
-      ws?.health?.toLowerCase() === "healthy"
+      ws?.health?.toLowerCase() !== "disconnected"
     ) {
       return "on";
     }
@@ -180,6 +198,8 @@ export default function ActiveMachineList() {
           intervalActive={activeIntervals.has(machine._id)}
           utilizationPct={machineMetrics[machine._id]?.utilization}
           realCycles={machineMetrics[machine._id]?.cycles}
+          downtimeCount={downtimeCounts[machine._id] ?? 0}
+          onDowntimeReported={loadDowntimeCounts}
           maintenanceSince={
             overrides[machine._id]?.state === "in maintenance"
               ? overrides[machine._id].since

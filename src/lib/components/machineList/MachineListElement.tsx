@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { Machine } from "./types";
 import { useNotifications } from "@/context/NotificationContext";
+import ReportDowntimeButton from "@/lib/components/machine/ReportDowntimeButton";
 
 type Props = Machine & {
   onStart?: () => Promise<boolean>;
@@ -10,6 +11,8 @@ type Props = Machine & {
   intervalActive?: boolean;
   utilizationPct?: number;
   realCycles?: number;
+  downtimeCount?: number;
+  onDowntimeReported?: () => void;
 };
 
 type LogState = "idle" | "loading" | "ok" | "error";
@@ -98,7 +101,7 @@ function StatBar({ label, pct, color }: { label: string; pct: number; color: str
 export default function MachineListElement({
   name, _id, liveKw, maxPowerConsumption, currentState,
   onStart, onStop, maintenanceSince, intervalActive,
-  utilizationPct, realCycles,
+  utilizationPct, realCycles, downtimeCount = 0, onDowntimeReported,
 }: Props) {
   const runtimePct = utilizationPct != null ? Math.round(utilizationPct) : null;
   const idlePct    = utilizationPct != null ? Math.max(0, Math.round(100 - utilizationPct)) : null;
@@ -239,15 +242,19 @@ export default function MachineListElement({
           </div>
         )}
 
-        {/* work interval logging */}
-        {currentState !== "in maintenance" && (
-          <div className="flex items-center gap-1.5 px-4 py-2.5 border-t border-gray-100 dark:border-zinc-800/60">
-            {!intervalActive && onStart &&
-              btn("▶ Log start", onStart, "border-green-300 dark:border-green-700 text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20")}
-            {intervalActive && onStop &&
-              btn("■ Log stop", onStop, "border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20")}
-          </div>
-        )}
+        {/* work interval logging + downtime reporting */}
+        <div className="flex items-center gap-1.5 px-4 py-2.5 border-t border-gray-100 dark:border-zinc-800/60">
+          {currentState !== "in maintenance" && !intervalActive && onStart &&
+            btn("▶ Log start", onStart, "border-green-300 dark:border-green-700 text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20")}
+          {currentState !== "in maintenance" && intervalActive && onStop &&
+            btn("■ Log stop", onStop, "border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20")}
+          <ReportDowntimeButton
+            machineId={_id}
+            machineName={name}
+            count={downtimeCount}
+            onReported={onDowntimeReported}
+          />
+        </div>
       </div>
     </Link>
   );

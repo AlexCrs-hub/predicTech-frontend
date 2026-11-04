@@ -1,7 +1,7 @@
 import { fetchMachineById } from "@/lib/api/machineApi";
 import { useWebSocket } from "@/context/WebSocketContext";
 import { useNotifications } from "@/context/NotificationContext";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { Machine } from "@/lib/components/machineList/types";
 import {
@@ -17,6 +17,8 @@ import {
   YAxis,
 } from "recharts";
 import DowntimeLog from "@/lib/components/machine/DowntimeLog";
+import DowntimeReportModal from "@/lib/components/machine/DowntimeReportModal";
+import ReportDowntimeButton from "@/lib/components/machine/ReportDowntimeButton";
 import MachineSensors from "@/lib/components/machine/MachineSensors";
 import { getMachineUtilization } from "@/lib/utils/machineSimulation";
 import { downloadCsv } from "@/lib/utils/exportCsv";
@@ -28,8 +30,10 @@ import {
   toPeriod,
 } from "@/lib/api/metricsApi";
 import {
-  fetchDowntimeStats, DowntimeStats, DowntimeReason,
-  REASON_LABEL, REASON_COLOR, ALL_REASONS,
+  fetchDowntimeBreakdown, fetchReportableDowntime, fetchDowntimeTimeline,
+  downtimeColor, downtimeEnd, formatDuration,
+  DowntimeBreakdown, DowntimeRecord,
+  REASON_LABEL, REASON_COLOR, UNREPORTED_COLOR,
 } from "@/lib/api/downtimeRecordsApi";
 
 const ENERGY_RATE = 0.15; // €/kWh
@@ -40,54 +44,44 @@ const COST_PERIODS = [
 ] as const;
 type CostPeriod = typeof COST_PERIODS[number];
 
-type TimelineSegment = {
-  label: "Running" | "Idle" | "Down" | "Setup";
-  color: string;
-  pct: number;
-};
+// shift starts 06:00 — the production timeline runs from shift start to now
+const SHIFT_START_HOUR = 6;
+const DOWNTIME_POLL_MS = 60_000;
 
-// shift starts 06:00, total 8 h = 480 min
-const SHIFT_START_MIN = 6 * 60;
-const SHIFT_DURATION_MIN = 480;
-
-const TIMELINE: TimelineSegment[] = [
-  { label: "Running", color: "#22c55e", pct: 62 },
-  { label: "Idle", color: "#eab308", pct: 8 },
-  { label: "Running", color: "#22c55e", pct: 4 },
-  { label: "Down", color: "#ef4444", pct: 5 },
-  { label: "Running", color: "#22c55e", pct: 15 },
-  { label: "Setup", color: "#60a5fa", pct: 3 },
-  { label: "Running", color: "#22c55e", pct: 3 },
-];
-
-// compute wall-clock start/end for each segment
-function minsToHHMM(total: number) {
-  const h = Math.floor(total / 60) % 24;
-  const m = Math.floor(total % 60);
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+function getShiftStart(now = new Date()) {
+  const d = new Date(now);
+  d.setHours(SHIFT_START_HOUR, 0, 0, 0);
+  if (d > now) d.setDate(d.getDate() - 1);
+  return d;
 }
 
-const TIMELINE_WITH_TIMES = (() => {
-  let cursor = 0;
-  return TIMELINE.map((seg) => {
-    const start = minsToHHMM(
-      SHIFT_START_MIN + (cursor / 100) * SHIFT_DURATION_MIN,
-    );
-    cursor += seg.pct;
-    const end = minsToHHMM(
-      SHIFT_START_MIN + (cursor / 100) * SHIFT_DURATION_MIN,
-    );
-    return { ...seg, start, end };
-  });
-})();
+function hhmm(d: Date) {
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
 
+type ShiftSegment =
+  | { kind: "running"; start: Date; end: Date; pct: number }
+  | { kind: "downtime"; start: Date; end: Date; pct: number; record: DowntimeRecord };
 
-const LEGEND_ITEMS = [
-  { label: "Running", color: "#22c55e" },
-  { label: "Idle", color: "#eab308" },
-  { label: "Down", color: "#ef4444" },
-  { label: "Setup", color: "#60a5fa" },
-];
+function buildShiftSegments(records: DowntimeRecord[], shiftStart: Date, now: Date): ShiftSegment[] {
+  const total = now.getTime() - shiftStart.getTime();
+  if (total <= 0) return [];
+  const pct = (a: Date, b: Date) => ((b.getTime() - a.getTime()) / total) * 100;
+  const out: ShiftSegment[] = [];
+  let cursor = shiftStart;
+  [...records]
+    .sort((a, b) => new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime())
+    .forEach((record) => {
+      const start = new Date(Math.max(new Date(record.startedAt).getTime(), cursor.getTime()));
+      const end   = new Date(Math.min(downtimeEnd(record).getTime(), now.getTime()));
+      if (end <= start) return;
+      if (start > cursor) out.push({ kind: "running", start: cursor, end: start, pct: pct(cursor, start) });
+      out.push({ kind: "downtime", start, end, pct: pct(start, end), record });
+      cursor = end;
+    });
+  if (cursor < now) out.push({ kind: "running", start: cursor, end: now, pct: pct(cursor, now) });
+  return out;
+}
 
 // ── shared primitives ─────────────────────────────────────────────────────────
 
@@ -302,101 +296,6 @@ function CuttingGauge({ value }: { value: number }) {
   );
 }
 
-// ── downtime reason modal (timeline click) ────────────────────────────────────
-
-function DowntimeModal({
-  segment,
-  onClose,
-  onLogged,
-}: {
-  segment: { start: string; end: string };
-  onClose: () => void;
-  onLogged: () => void;
-}) {
-  const [selected, setSelected] = useState("");
-  const [custom, setCustom] = useState("");
-
-  const reason = custom.trim() || selected;
-
-  const submit = () => {
-    if (!reason) return;
-    onLogged();
-    onClose();
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-zinc-700 w-full max-w-md mx-4 p-6 flex flex-col gap-4"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div>
-          <h2 className="text-base font-bold text-gray-900 dark:text-zinc-50">
-            Log downtime reason
-          </h2>
-          <p className="text-xs text-gray-500 dark:text-zinc-400 mt-1">
-            Down period:{" "}
-            <span className="font-semibold text-red-500">
-              {segment.start} – {segment.end}
-            </span>
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          {ALL_REASONS.map((r) => (
-            <button
-              key={r}
-              onClick={() => { setSelected(r); setCustom(""); }}
-              className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
-                selected === r && !custom
-                  ? "border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400"
-                  : "border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-zinc-300 hover:border-blue-400"
-              }`}
-            >
-              {REASON_LABEL[r]}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <label className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">
-            Or type custom reason
-          </label>
-          <input
-            type="text"
-            value={custom}
-            onChange={(e) => {
-              setCustom(e.target.value);
-              setSelected("");
-            }}
-            placeholder="Describe the downtime cause…"
-            className="text-sm rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 px-3 py-2 text-gray-800 dark:text-zinc-200 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-
-        <div className="flex justify-end gap-2 pt-1">
-          <button
-            onClick={onClose}
-            className="text-sm px-4 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            disabled={!reason}
-            onClick={submit}
-            className="text-sm px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            Save
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── page ──────────────────────────────────────────────────────────────────────
 
 const DT_PERIODS = [
@@ -412,10 +311,13 @@ export default function MachinePage() {
   const [dtRefreshKey, setDtRefreshKey] = useState(0);
   const [dtPeriod, setDtPeriod] = useState<DtPeriod>(DT_PERIODS[0]);
   const [dtFilter, setDtFilter] = useState("");
-  const [timelineModal, setTimelineModal] = useState<{
-    start: string;
-    end: string;
+  const [reportModal, setReportModal] = useState<{
+    records: DowntimeRecord[];
+    initialRecordId?: string;
   } | null>(null);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [shiftDowntimes, setShiftDowntimes] = useState<DowntimeRecord[]>([]);
+  const [now, setNow] = useState(() => new Date());
   const { machineStates, liveKw } = useWebSocket();
   const [costPeriod, setCostPeriod] = useState<CostPeriod>(COST_PERIODS[0]);
   const [metrics, setMetrics] = useState<{
@@ -435,7 +337,7 @@ export default function MachinePage() {
     plannedHours: null, unplannedHours: null,
     plannedPct: null, unplannedPct: null,
   });
-  const [dtStats, setDtStats] = useState<DowntimeStats | null>(null);
+  const [dtBreakdown, setDtBreakdown] = useState<DowntimeBreakdown | null>(null);
   const [liveHistory, setLiveHistory] = useState<LivePoint[]>([]);
   const [ticketModal, setTicketModal] = useState(false);
   const { createTicket } = useNotifications();
@@ -443,9 +345,11 @@ export default function MachinePage() {
   const machineId = new URLSearchParams(search).get("machineId") || "";
 
   const wsState   = machineStates[machineId];
-  const wsStatus  = wsState?.state ?? "DISCONNECTED";
-  const isRunning = wsStatus === "ON" && wsState?.health === "HEALTHY";
-  const isIdle    = wsStatus === "IDLE";
+  const wsStatus  = wsState?.state ?? "off";
+  // "stale" only means a few seconds without data — treat the machine as offline once disconnected
+  const isOnline  = !!wsState && wsState.health !== "disconnected";
+  const isRunning = isOnline && wsStatus === "on";
+  const isIdle    = isOnline && wsStatus === "idle";
   const statusLabel = isRunning ? "Running" : isIdle ? "Idle" : "Offline";
   const statusColor = isRunning ? "bg-green-500" : isIdle ? "bg-amber-400" : "bg-zinc-700";
 
@@ -493,9 +397,9 @@ export default function MachinePage() {
       fetchCutting(machineId, p),
       fetchCycles(machineId, p),
       fetchDowntimeHours(machineId, p),
-      fetchDowntimeStats(machineId, p),
+      fetchDowntimeBreakdown(p, machineId),
       fetchPlannedUnplanned(machineId, p),
-    ]).then(([util, cut, cyc, dth, dts, pu]) => {
+    ]).then(([util, cut, cyc, dth, dtb, pu]) => {
       const downtimeHours = dth.status === "fulfilled" ? dth.value.downtimeHours : null;
       // availability derived from downtime (no dedicated backend endpoint)
       const availability  = downtimeHours !== null
@@ -513,23 +417,65 @@ export default function MachinePage() {
         plannedPct:     pu.status    === "fulfilled" ? pu.value.plannedPercentage         : null,
         unplannedPct:   pu.status    === "fulfilled" ? pu.value.unplannedPercentage       : null,
       });
-      setDtStats(dts.status === "fulfilled" ? dts.value : null);
+      setDtBreakdown(dtb.status === "fulfilled" ? dtb.value : null);
     });
-  }, [machineId, dtPeriod.hours]);
+  }, [machineId, dtPeriod.hours, dtRefreshKey]);
+
+  // ── downtime: pending count (header button) + current shift (production timeline)
+  const loadDowntime = useCallback(() => {
+    if (!machineId) return;
+    const current = new Date();
+    setNow(current);
+    const shiftHours = (current.getTime() - getShiftStart(current).getTime()) / 3_600_000;
+    fetchReportableDowntime(machineId)
+      .then((list) => setPendingCount(Array.isArray(list) ? list.length : 0))
+      .catch(() => {});
+    fetchDowntimeTimeline(machineId, Math.max(shiftHours, 0.1))
+      .then((list) => setShiftDowntimes(Array.isArray(list) ? list : []))
+      .catch(() => {});
+  }, [machineId]);
+
+  useEffect(() => {
+    loadDowntime();
+    const id = setInterval(loadDowntime, DOWNTIME_POLL_MS);
+    return () => clearInterval(id);
+  }, [loadDowntime, dtRefreshKey]);
+
+  const refreshDowntime = () => setDtRefreshKey((k) => k + 1);
+
+  // clicked downtime + every unreported one from the same view, as tabs (oldest first)
+  const openDowntimeReport = (record: DowntimeRecord, all: DowntimeRecord[]) => {
+    const list = all.filter((r) => !r.reasonRecorded || r._id === record._id);
+    setReportModal({ records: list, initialRecordId: record._id });
+  };
+
+  const shiftStart    = getShiftStart(now);
+  const shiftSegments = buildShiftSegments(shiftDowntimes, shiftStart, now);
+  const shiftReasons  = [...new Set(
+    shiftDowntimes.filter((r) => r.reasonRecorded && r.reason).map((r) => r.reason!),
+  )];
 
   const cycleTimeS = metrics.cuttingHours != null && metrics.cycles != null && metrics.cycles > 0
     ? +((metrics.cuttingHours * 3600) / metrics.cycles).toFixed(1)
     : null;
 
-  const downtimeCauses = dtStats?.reasonCounts
-    ? (Object.entries(dtStats.reasonCounts) as [DowntimeReason, number][])
-        .filter(([, count]) => count > 0)
-        .map(([reason, count]) => ({
-          reason,
-          count,
-          pct: dtStats.total > 0 ? Math.round((count / dtStats.total) * 100) : 0,
-        }))
-        .sort((a, b) => b.count - a.count)
+  // share of downtime *time* per reason; long unreported downtime shown separately
+  const downtimeCauses = dtBreakdown
+    ? [
+        ...dtBreakdown.reasons.map((r) => ({
+          key: r.reason as string,
+          label: REASON_LABEL[r.reason],
+          color: REASON_COLOR[r.reason],
+          ms: r.ms,
+          count: r.count,
+        })),
+        ...(dtBreakdown.unreported.ms > 0
+          ? [{ key: "unreported", label: "Not reported", color: UNREPORTED_COLOR, ms: dtBreakdown.unreported.ms, count: dtBreakdown.unreported.count }]
+          : []),
+      ]
+        .filter((c) => c.ms > 0)
+        .map((c) => ({ ...c, pct: dtBreakdown.totalMs > 0 ? Math.round((c.ms / dtBreakdown.totalMs) * 100) : 0 }))
+        .sort((a, b) => b.ms - a.ms)
     : [];
 
   const handleExport = () => {
@@ -549,8 +495,8 @@ export default function MachinePage() {
       ["Downtime (h)",    metrics.downtimeHours != null ? metrics.downtimeHours.toFixed(2)        : "—"],
       [],
       ["DOWNTIME CAUSES"],
-      ["Reason", "Events", "Share"],
-      ...downtimeCauses.map(({ reason, count, pct }) => [REASON_LABEL[reason], count, `${pct}%`]),
+      ["Reason", "Minutes", "Events", "Share"],
+      ...downtimeCauses.map(({ label, ms, count, pct }) => [label, Math.round(ms / 60000), count, `${pct}%`]),
     ];
 
     downloadCsv(
@@ -579,6 +525,13 @@ export default function MachinePage() {
             <span className="text-zinc-500 animate-pulse">Loading…</span>
           )}
         </h1>
+        <ReportDowntimeButton
+          machineId={machineId}
+          machineName={machine?.name ?? machineId}
+          count={pendingCount}
+          variant="header"
+          onReported={refreshDowntime}
+        />
         <button
           onClick={() => setTicketModal(true)}
           className="text-xs px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white border border-white/30 transition-colors font-medium"
@@ -703,45 +656,43 @@ export default function MachinePage() {
             />
           </Card>
 
-          {/* production timeline */}
+          {/* production timeline — current shift, real downtime records */}
           <Card>
             <Label>Production Timeline</Label>
-            <div className="flex h-7 rounded-lg overflow-hidden gap-px">
-              {TIMELINE_WITH_TIMES.map((seg, i) => (
-                <div
-                  key={i}
-                  style={{
-                    flexBasis: `${seg.pct}%`,
-                    backgroundColor: seg.color,
-                  }}
-                  title={
-                    seg.label === "Down"
-                      ? `${seg.label} ${seg.start}–${seg.end} — click to log reason`
-                      : `${seg.label}: ${seg.start}–${seg.end}`
-                  }
-                  onClick={
-                    seg.label === "Down"
-                      ? () =>
-                          setTimelineModal({ start: seg.start, end: seg.end })
-                      : undefined
-                  }
-                  className={
-                    seg.label === "Down"
-                      ? "cursor-pointer hover:brightness-110 transition-all relative group"
-                      : undefined
-                  }
-                />
-              ))}
+            <div className="flex h-7 rounded-lg overflow-hidden gap-px bg-gray-100 dark:bg-zinc-800">
+              {shiftSegments.map((seg, i) =>
+                seg.kind === "running" ? (
+                  <div
+                    key={i}
+                    style={{ flexBasis: `${seg.pct}%`, backgroundColor: "#22c55e" }}
+                    title={`Running: ${hhmm(seg.start)}–${hhmm(seg.end)}`}
+                  />
+                ) : (
+                  <div
+                    key={seg.record._id}
+                    style={{ flexBasis: `${seg.pct}%`, backgroundColor: downtimeColor(seg.record) }}
+                    title={`${seg.record.reasonRecorded && seg.record.reason ? REASON_LABEL[seg.record.reason] : "Downtime — not reported"} ${hhmm(seg.start)}–${seg.record.resolvedAt ? hhmm(seg.end) : "now"} (${formatDuration(seg.end.getTime() - seg.start.getTime())}) — click to ${seg.record.reasonRecorded ? "edit" : "report"}`}
+                    onClick={() => openDowntimeReport(seg.record, shiftDowntimes)}
+                    className="min-w-[3px] cursor-pointer hover:brightness-110 transition-all"
+                  />
+                ),
+              )}
             </div>
 
             {/* hint below bar */}
             <p className="text-[10px] text-gray-400 dark:text-zinc-600 mt-1.5">
-              Red (Down) segments are clickable — log reason for past downtime.
+              {shiftDowntimes.length === 0
+                ? "No downtime this shift."
+                : "Downtime segments are clickable — report or edit the reason."}
             </p>
 
-            <div className="flex items-center justify-between mt-2">
-              <div className="flex items-center gap-4">
-                {LEGEND_ITEMS.map(({ label, color }) => (
+            <div className="flex items-center justify-between mt-2 gap-3">
+              <div className="flex items-center gap-x-4 gap-y-1 flex-wrap">
+                {[
+                  { label: "Running", color: "#22c55e" },
+                  { label: "Not reported", color: UNREPORTED_COLOR },
+                  ...shiftReasons.map((r) => ({ label: REASON_LABEL[r], color: REASON_COLOR[r] })),
+                ].map(({ label, color }) => (
                   <span
                     key={label}
                     className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-zinc-400"
@@ -754,8 +705,8 @@ export default function MachinePage() {
                   </span>
                 ))}
               </div>
-              <span className="text-xs text-gray-400 dark:text-zinc-500">
-                06:00 – now
+              <span className="text-xs text-gray-400 dark:text-zinc-500 shrink-0">
+                {hhmm(shiftStart)} – now
               </span>
             </div>
           </Card>
@@ -794,20 +745,20 @@ export default function MachinePage() {
                 </p>
               ) : (
                 downtimeCauses
-                  .filter((c) => REASON_LABEL[c.reason].toLowerCase().includes(dtFilter.toLowerCase()))
-                  .map(({ reason, count, pct }) => (
-                    <div key={reason} className="flex items-center gap-3">
+                  .filter((c) => c.label.toLowerCase().includes(dtFilter.toLowerCase()))
+                  .map(({ key, label, color, ms, count, pct }) => (
+                    <div key={key} className="flex items-center gap-3" title={`${count} event${count !== 1 ? "s" : ""}`}>
                       <span className="w-28 text-sm text-gray-600 dark:text-zinc-400 shrink-0">
-                        {REASON_LABEL[reason]}
+                        {label}
                       </span>
                       <div className="flex-1 h-4 rounded-full bg-gray-100 dark:bg-zinc-800 overflow-hidden">
                         <div
                           className="h-full rounded-full transition-all duration-300"
-                          style={{ width: `${pct}%`, backgroundColor: REASON_COLOR[reason] }}
+                          style={{ width: `${pct}%`, backgroundColor: color }}
                         />
                       </div>
                       <span className="text-sm font-semibold text-gray-800 dark:text-zinc-200 w-16 text-right shrink-0 tabular-nums">
-                        {count} events
+                        {formatDuration(ms)}
                       </span>
                       <span className="text-xs text-gray-400 dark:text-zinc-500 w-8 text-right shrink-0 tabular-nums">
                         {pct}%
@@ -828,6 +779,7 @@ export default function MachinePage() {
               machineId={machineId}
               refreshKey={dtRefreshKey}
               periodHours={dtPeriod.hours}
+              onReported={refreshDowntime}
             />
           </Card>
         </div>
@@ -835,15 +787,21 @@ export default function MachinePage() {
 
       {/* historical timeline – full width */}
       <div className="px-5 pb-2">
-        <InteractiveTimeline machineId={machineId} />
+        <InteractiveTimeline
+          machineId={machineId}
+          refreshKey={dtRefreshKey}
+          onDowntimeClick={openDowntimeReport}
+        />
       </div>
 
-      {/* timeline modal */}
-      {timelineModal && (
-        <DowntimeModal
-          segment={timelineModal}
-          onClose={() => setTimelineModal(null)}
-          onLogged={() => setDtRefreshKey((k) => k + 1)}
+      {/* downtime report modal (timeline click) */}
+      {reportModal && (
+        <DowntimeReportModal
+          machineName={machine?.name ?? machineId}
+          records={reportModal.records}
+          initialRecordId={reportModal.initialRecordId}
+          onClose={() => { setReportModal(null); refreshDowntime(); }}
+          onSaved={refreshDowntime}
         />
       )}
 

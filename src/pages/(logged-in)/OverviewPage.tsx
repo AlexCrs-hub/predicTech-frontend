@@ -6,7 +6,11 @@ import { Machine } from "@/lib/components/machineList/types";
 import { getMachineUtilization } from "@/lib/utils/machineSimulation";
 import { useWebSocket } from "@/context/WebSocketContext";
 import { downloadCsv } from "@/lib/utils/exportCsv";
-import { fetchUtilization, fetchCycles, fetchCutting, fetchDowntimeHours } from "@/lib/api/metricsApi";
+import { fetchUtilization, fetchCycles, fetchCutting, fetchDowntimeHours, toPeriod } from "@/lib/api/metricsApi";
+import {
+  fetchDowntimeBreakdown, formatDuration,
+  DowntimeBreakdown, REASON_LABEL, REASON_COLOR, UNREPORTED_COLOR,
+} from "@/lib/api/downtimeRecordsApi";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, LineChart, Line,
@@ -100,13 +104,20 @@ function computeHours(machineId: string, totalHours: number, real?: MachineMetri
 }
 
 // ── Downtime causes (bar chart) ───────────────────────────────────────────────
-const DOWNTIME_CAUSES = [
-  { name: "Tool change",   minutes: 18, pct: 38, color: "#ef4444" },
-  { name: "Material wait", minutes: 12, pct: 25, color: "#f97316" },
-  { name: "Micro-stops",   minutes: 9,  pct: 19, color: "#eab308" },
-  { name: "Setup",         minutes: 5,  pct: 11, color: "#60a5fa" },
-  { name: "Other",         minutes: 3,  pct: 6,  color: "#6b7280" },
-];
+type DowntimeCause = { key: string; name: string; ms: number; count: number; pct: number; color: string };
+
+// share of downtime *time* per reported reason; long unreported downtime gets its own row
+function toDowntimeCauses(b: DowntimeBreakdown | null): DowntimeCause[] {
+  if (!b || b.totalMs <= 0) return [];
+  const rows = [
+    ...b.reasons.map((r) => ({ key: r.reason as string, name: REASON_LABEL[r.reason], ms: r.ms, count: r.count, color: REASON_COLOR[r.reason] })),
+    { key: "unreported", name: "Not reported", ms: b.unreported.ms, count: b.unreported.count, color: UNREPORTED_COLOR },
+  ];
+  return rows
+    .filter((r) => r.ms > 0)
+    .map((r) => ({ ...r, pct: Math.round((r.ms / b.totalMs) * 100) }))
+    .sort((a, b) => b.ms - a.ms);
+}
 
 const ENERGY_RATE = 0.15; // €/kWh
 
@@ -225,6 +236,8 @@ export default function OverviewPage() {
   const [selectedMachine, setSelectedMachine] = useState<string>("all");
   const [costPeriod, setCostPeriod] = useState<CostPeriod>(COST_PERIODS[1]);
   const [dtFilter, setDtFilter] = useState("");
+  const [dtBreakdown, setDtBreakdown] = useState<DowntimeBreakdown | null>(null);
+  const [dtStatus, setDtStatus] = useState<"loading" | "ok" | "error">("loading");
   const { reports } = useNotifications();
   const { liveKw } = useWebSocket();
 
@@ -264,6 +277,25 @@ export default function OverviewPage() {
       setMachineMetrics(Object.fromEntries(results.map((r) => [r.id, r])));
     });
   }, [machines]);
+
+  // Real downtime split by reason (reported via "Report downtime")
+  useEffect(() => {
+    let cancelled = false;
+    setDtStatus("loading");
+    fetchDowntimeBreakdown(toPeriod(period.hours), selectedMachine === "all" ? undefined : selectedMachine)
+      .then((b) => {
+        if (cancelled) return;
+        setDtBreakdown(b && Array.isArray(b.reasons) ? b : null);
+        setDtStatus("ok");
+      })
+      .catch(() => { if (!cancelled) setDtStatus("error"); });
+    return () => { cancelled = true; };
+  }, [period.hours, selectedMachine]);
+
+  const downtimeCauses = toDowntimeCauses(dtBreakdown);
+  const selectedMachineName = selectedMachine === "all"
+    ? "all machines"
+    : machines.find((m) => m._id === selectedMachine)?.name ?? "selected machine";
 
   const activeReports = reports.filter((r) => r.status !== "fixed");
 
@@ -331,8 +363,8 @@ export default function OverviewPage() {
 
   const exportDowntimeCauses = () => {
     downloadCsv("downtime_causes.csv", [
-      ["Cause", "Minutes", "Percent"],
-      ...DOWNTIME_CAUSES.map((d) => [d.name, d.minutes, d.pct]),
+      ["Cause", "Minutes", "Events", "Percent"],
+      ...downtimeCauses.map((d) => [d.name, Math.round(d.ms / 60000), d.count, d.pct]),
     ]);
   };
 
@@ -379,14 +411,17 @@ export default function OverviewPage() {
 
   const downtimeInsights: Insight[] = (() => {
     const ins: Insight[] = [];
-    const sorted = [...DOWNTIME_CAUSES].sort((a, b) => b.pct - a.pct);
+    const unreported = downtimeCauses.find((c) => c.key === "unreported");
+    const sorted = downtimeCauses.filter((c) => c.key !== "unreported");
+    if (unreported && unreported.pct > 15)
+      ins.push({ text: `${unreported.pct}% of downtime (${unreported.count} stop${unreported.count !== 1 ? "s" : ""}) is not reported yet — use "Report downtime" on the machine cards`, type: "warning" });
     if (sorted.length === 0) return ins;
     const top = sorted[0];
     if (top.pct > 35)
       ins.push({ text: `"${top.name}" is the dominant downtime cause at ${top.pct}% — addressing it would have the highest impact`, type: "warning" });
-    const other = DOWNTIME_CAUSES.find((c) => c.name === "Other");
+    const other = sorted.find((c) => c.key === "other");
     if (other && other.pct > 15)
-      ins.push({ text: `${other.pct}% of downtime is unclassified — log specific reasons to improve tracking`, type: "info" });
+      ins.push({ text: `${other.pct}% of downtime is classified as "Other" — log specific reasons to improve tracking`, type: "info" });
     if (sorted.length >= 2) {
       const topTwo = sorted[0].pct + sorted[1].pct;
       if (topTwo > 60)
@@ -572,7 +607,7 @@ export default function OverviewPage() {
           {/* Downtime causes — bar chart */}
           <section className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
-              <SectionHeading>Top downtime causes — {period.label}</SectionHeading>
+              <SectionHeading>Top downtime causes — {period.label} · {selectedMachineName}</SectionHeading>
               <ExportBtn onClick={exportDowntimeCauses} />
             </div>
             <input
@@ -584,10 +619,18 @@ export default function OverviewPage() {
             />
             <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm p-5">
               <div className="flex flex-col gap-3">
-                {DOWNTIME_CAUSES.filter((c) => c.name.toLowerCase().includes(dtFilter.toLowerCase())).map(({ name, minutes, pct, color }) => {
-                  const scaledMin = Math.round(minutes * (period.hours / 24));
+                {dtStatus === "loading" && downtimeCauses.length === 0 && (
+                  <p className="text-sm text-gray-400 dark:text-zinc-500 animate-pulse">Loading downtime…</p>
+                )}
+                {dtStatus === "error" && (
+                  <p className="text-sm text-red-500">Could not load downtime data.</p>
+                )}
+                {dtStatus === "ok" && downtimeCauses.length === 0 && (
+                  <p className="text-sm text-gray-400 dark:text-zinc-500">No downtime in this period.</p>
+                )}
+                {downtimeCauses.filter((c) => c.name.toLowerCase().includes(dtFilter.toLowerCase())).map(({ key, name, ms, count, pct, color }) => {
                   return (
-                    <div key={name} className="flex items-center gap-3">
+                    <div key={key} className="flex items-center gap-3" title={`${count} event${count !== 1 ? "s" : ""}`}>
                       <span className="w-28 text-sm text-gray-600 dark:text-zinc-400 shrink-0">{name}</span>
                       <div className="flex-1 h-4 rounded-full bg-gray-100 dark:bg-zinc-800 overflow-hidden">
                         <div
@@ -595,8 +638,8 @@ export default function OverviewPage() {
                           style={{ width: `${pct}%`, backgroundColor: color }}
                         />
                       </div>
-                      <span className="text-sm font-semibold text-gray-800 dark:text-zinc-200 w-14 text-right shrink-0 tabular-nums">
-                        {scaledMin} min
+                      <span className="text-sm font-semibold text-gray-800 dark:text-zinc-200 w-16 text-right shrink-0 tabular-nums">
+                        {formatDuration(ms)}
                       </span>
                       <span className="text-xs text-gray-400 dark:text-zinc-500 w-8 text-right shrink-0 tabular-nums">
                         {pct}%

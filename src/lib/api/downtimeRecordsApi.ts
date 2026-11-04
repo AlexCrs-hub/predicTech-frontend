@@ -15,6 +15,27 @@ export type DowntimeRecord = {
   downtimeType: DowntimeType | null;
   reason: DowntimeReason | null;
   reasonRecorded: boolean;
+  /** Set by the reportable/timeline endpoints: open records end at the machine's last-seen time */
+  effectiveEnd?: string;
+  durationMs?: number;
+};
+
+export type ReportableSummary = {
+  counts: Record<string, number>;
+  windowHours: number;
+  minDurationMs: number;
+};
+
+export type DowntimeBreakdown = {
+  period: ApiPeriod;
+  machineId: string | null;
+  from: string;
+  to: string;
+  totalMs: number;
+  reasons: { reason: DowntimeReason; ms: number; count: number }[];
+  unreported: { ms: number; count: number };
+  typeMs: { planned: number; unplanned: number };
+  minDurationMs: number;
 };
 
 export type DowntimeStats = {
@@ -49,6 +70,26 @@ export async function recordDowntimeReason(
   });
 }
 
+/** Unreported downtime (≥ min duration) from the last `hours`, oldest first */
+export async function fetchReportableDowntime(machineId: string, hours?: number): Promise<DowntimeRecord[]> {
+  const q = hours ? `?hours=${hours}` : "";
+  return apiFetch(`${BASE}/reportable/${machineId}${q}`);
+}
+
+export async function fetchReportableSummary(): Promise<ReportableSummary> {
+  return apiFetch(`${BASE}/reportable-summary`);
+}
+
+/** Downtime (reported or not) overlapping the last `hours`, oldest first */
+export async function fetchDowntimeTimeline(machineId: string, hours: number): Promise<DowntimeRecord[]> {
+  return apiFetch(`${BASE}/timeline/${machineId}?hours=${hours}`);
+}
+
+export async function fetchDowntimeBreakdown(period: ApiPeriod, machineId?: string): Promise<DowntimeBreakdown> {
+  const q = machineId ? `?machineId=${machineId}` : "";
+  return apiFetch(`${BASE}/breakdown/${period}${q}`);
+}
+
 export async function fetchDowntimeStats(machineId: string, period: ApiPeriod): Promise<DowntimeStats> {
   return apiFetch(`${BASE}/stats/${machineId}/${period}`);
 }
@@ -80,3 +121,23 @@ export const ALL_REASONS: DowntimeReason[] = [
   "maintenance", "tool_change", "setup", "material_wait",
   "breakdown", "fault", "micro_stop", "other",
 ];
+
+/** Downtime that still needs a reason */
+export const UNREPORTED_COLOR = "#ef4444";
+
+export function downtimeColor(r: DowntimeRecord): string {
+  return r.reasonRecorded && r.reason ? REASON_COLOR[r.reason] : UNREPORTED_COLOR;
+}
+
+/** End of a downtime record for display: resolved time, else last-seen, else now */
+export function downtimeEnd(r: DowntimeRecord): Date {
+  return new Date(r.resolvedAt ?? r.effectiveEnd ?? Date.now());
+}
+
+export function formatDuration(ms: number): string {
+  const m = Math.max(0, Math.round(ms / 60000));
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ${m % 60}m`;
+  return `${Math.floor(h / 24)}d ${h % 24}h`;
+}
