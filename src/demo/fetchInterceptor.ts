@@ -1,6 +1,8 @@
 import {
   demoCycles, demoDowntime, demoUtilization, demoCutting,
   demoPlannedUnplanned, demoDowntimeStats,
+  demoReportableDowntime, demoReportableSummary, demoDowntimeTimeline,
+  demoDowntimeBreakdown, demoRecordDowntimeReason,
   demoSensorsForMachine, demoReadingsForSensor,
   demoStartInterval, demoStopInterval,
   demoMachineList, demoMachineById,
@@ -82,9 +84,18 @@ export function installDemoFetch() {
     if (r0 === "downtime-records") {
       if (r1 === "unresolved")   return ok([]);
       if (r1 === "stats")        return ok(demoDowntimeStats(r2, r3 as ApiPeriod));
+      if (r1 === "reportable-summary") return ok(demoReportableSummary());
+      if (r1 === "reportable")   return ok(demoReportableDowntime(r2));
+      const query = new URLSearchParams(url.split("?")[1] ?? "");
+      if (r1 === "timeline")     return ok(demoDowntimeTimeline(r2, Number(query.get("hours")) || 24));
+      if (r1 === "breakdown")    return ok(demoDowntimeBreakdown(r2 as ApiPeriod, query.get("machineId") ?? undefined));
       // PATCH /:id/reason
       if (r2 === "reason" && method === "PATCH") {
-        return ok({ _id: r1, reasonRecorded: true, reason: "other", downtimeType: "unplanned" });
+        const body = typeof init?.body === "string" ? JSON.parse(init.body) : {};
+        const updated = demoRecordDowntimeReason(r1, body.reason ?? "other", body.downtimeType ?? "unplanned");
+        return updated
+          ? ok(updated)
+          : ok({ _id: r1, reasonRecorded: true, reason: body.reason ?? "other", downtimeType: body.downtimeType ?? "unplanned" });
       }
       return ok([]);
     }

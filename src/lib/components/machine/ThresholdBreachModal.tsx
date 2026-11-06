@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/lib/components/ui/button";
-import { ALL_REASONS, REASON_LABEL, DowntimeReason } from "@/lib/api/downtimeRecordsApi";
 import type { BreachAlert } from "@/context/NotificationContext";
 
 export type { BreachAlert };
@@ -8,11 +7,13 @@ export type { BreachAlert };
 type Props = {
   alert: BreachAlert;
   onClose: () => void;
-  onLogReason: (machineId: string, reason: DowntimeReason) => void;
+  /** reportable downtimes (≥ 5 min) for this machine; null while loading */
+  downtimeCount: number | null;
+  onReportDowntime: (machineId: string) => void;
   onCreateTicket: (machineId: string, comment: string) => void;
 };
 
-export default function ThresholdBreachModal({ alert, onClose, onLogReason, onCreateTicket }: Props) {
+export default function ThresholdBreachModal({ alert, onClose, downtimeCount, onReportDowntime, onCreateTicket }: Props) {
   const [mode, setMode]       = useState<"idle" | "ticket">("idle");
   const [comment, setComment] = useState("");
 
@@ -20,12 +21,6 @@ export default function ThresholdBreachModal({ alert, onClose, onLogReason, onCr
     setMode("idle");
     setComment("");
   }, [alert.machineId]);
-
-  const handleLogReason = (reason: DowntimeReason) => {
-    onLogReason(alert.machineId, reason);
-    setMode("idle");
-    setComment("");
-  };
 
   const handleCreateTicket = () => {
     if (!comment.trim()) return;
@@ -73,14 +68,23 @@ export default function ThresholdBreachModal({ alert, onClose, onLogReason, onCr
         {mode === "idle" && (
           <>
             <div className="flex flex-col gap-2">
-              <p className="text-sm font-semibold text-gray-800 dark:text-zinc-200">Select downtime reason:</p>
-              <div className="flex flex-wrap gap-2">
-                {ALL_REASONS.map((r) => (
-                  <Button key={r} size="sm" variant="outline" className="text-xs h-7" onClick={() => handleLogReason(r)}>
-                    {REASON_LABEL[r]}
-                  </Button>
-                ))}
-              </div>
+              <Button
+                variant="outline"
+                className="w-full border-red-300 text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
+                disabled={!downtimeCount}
+                onClick={() => onReportDowntime(alert.machineId)}
+              >
+                {downtimeCount === null
+                  ? "Checking downtime…"
+                  : downtimeCount > 0
+                    ? `Report downtime (${downtimeCount})`
+                    : "Report downtime"}
+              </Button>
+              {downtimeCount === 0 && (
+                <p className="text-xs text-gray-500 dark:text-zinc-400">
+                  Downtime can be reported once it has lasted at least 5 minutes.
+                </p>
+              )}
             </div>
 
             <div className="border-t dark:border-zinc-700 pt-3">

@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import {
-  fetchUnresolvedDowntime,
+  fetchReportableDowntime,
   recordDowntimeReason,
+  downtimeEnd,
+  formatDuration,
   DowntimeRecord,
   DowntimeReason,
   DowntimeType,
@@ -11,13 +13,6 @@ import {
 } from "@/lib/api/downtimeRecordsApi";
 
 // ── entry row ─────────────────────────────────────────────────────────────────
-
-function duration(start: string, end: string | null): string {
-  const ms = (end ? new Date(end) : new Date()).getTime() - new Date(start).getTime();
-  const m = Math.floor(ms / 60000);
-  if (m < 60) return `${m} min`;
-  return `${Math.floor(m / 60)}h ${m % 60}m`;
-}
 
 function EntryRow({
   record,
@@ -43,7 +38,7 @@ function EntryRow({
   };
 
   const startTime = new Date(record.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  const dur = duration(record.startedAt, record.resolvedAt);
+  const dur = formatDuration(downtimeEnd(record).getTime() - new Date(record.startedAt).getTime());
 
   return (
     <div className="flex flex-col gap-1.5 px-3 py-2 rounded-lg bg-gray-50 dark:bg-zinc-800/60 border border-gray-100 dark:border-zinc-800">
@@ -135,10 +130,13 @@ export default function DowntimeLog({
   machineId,
   refreshKey = 0,
   periodHours,
+  onReported,
 }: {
   machineId: string;
   refreshKey?: number;
   periodHours?: number;
+  /** called after a reason is saved; the parent is expected to bump refreshKey */
+  onReported?: () => void;
 }) {
   const [records, setRecords] = useState<DowntimeRecord[]>([]);
   const [loading, setLoading] = useState(false);
@@ -149,12 +147,9 @@ export default function DowntimeLog({
     setLoading(true);
     setError(false);
     try {
-      const data = await fetchUnresolvedDowntime(machineId);
-      const cutoff = periodHours ? Date.now() - periodHours * 60 * 60 * 1000 : 0;
+      const data = await fetchReportableDowntime(machineId, periodHours);
       setRecords(
-        data
-          .filter((r) => !periodHours || new Date(r.startedAt).getTime() >= cutoff)
-          .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
+        data.sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
       );
     } catch {
       setError(true);
@@ -192,7 +187,7 @@ export default function DowntimeLog({
       {!loading && records.length > 0 && (
         <div className="flex flex-col gap-1.5 max-h-72 overflow-y-auto pr-0.5">
           {records.map((r) => (
-            <EntryRow key={r._id} record={r} onResolved={load} />
+            <EntryRow key={r._id} record={r} onResolved={onReported ?? load} />
           ))}
         </div>
       )}

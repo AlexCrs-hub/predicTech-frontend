@@ -1,6 +1,7 @@
 import ErrorCard from "./machine/ErrorCard";
 import NotificationModal from "./machine/NotificationModal";
 import ThresholdBreachModal from "./machine/ThresholdBreachModal";
+import DowntimeReportModal from "./machine/DowntimeReportModal";
 import {
   Sidebar,
   SidebarContent,
@@ -18,9 +19,8 @@ import {
   BreachAlert,
 } from "@/context/NotificationContext";
 import {
-  fetchUnresolvedDowntime,
-  recordDowntimeReason,
-  DowntimeReason,
+  fetchReportableDowntime,
+  DowntimeRecord,
 } from "@/lib/api/downtimeRecordsApi";
 import { fetchAllMachines } from "@/lib/api/machineApi";
 import { Link } from "react-router-dom";
@@ -52,6 +52,19 @@ export function AppSidebar() {
   const [errors, setErrors] = useState<SensorWarning[]>([]);
   const [activeAlert, setActiveAlert] = useState<ThresholdAlert | null>(null);
   const [openBreach, setOpenBreach] = useState<BreachAlert | null>(null);
+  const [breachDowntime, setBreachDowntime] = useState<DowntimeRecord[] | null>(null);
+  const [downtimeReport, setDowntimeReport] = useState<{ machineName: string; records: DowntimeRecord[] } | null>(null);
+
+  // load the machine's reportable downtime whenever a breach alert is opened
+  useEffect(() => {
+    setBreachDowntime(null);
+    if (!openBreach) return;
+    let cancelled = false;
+    fetchReportableDowntime(openBreach.machineId)
+      .then((list) => { if (!cancelled) setBreachDowntime(Array.isArray(list) ? list : []); })
+      .catch(() => { if (!cancelled) setBreachDowntime([]); });
+    return () => { cancelled = true; };
+  }, [openBreach]);
 
   useEffect(() => {
     fetchAllMachines()
@@ -135,15 +148,12 @@ export function AppSidebar() {
     setErrors((prev) => prev.filter((item) => item.id !== id));
   };
 
-  const handleBreachLogReason = (machineId: string, reason: DowntimeReason) => {
+  // hand over to the tabbed downtime report (all of the machine's pending downtimes)
+  const handleBreachReportDowntime = (machineId: string) => {
+    if (!openBreach || !breachDowntime?.length) return;
+    setDowntimeReport({ machineName: openBreach.machineName, records: breachDowntime });
     dismissBreachAlert(machineId);
     setOpenBreach(null);
-    fetchUnresolvedDowntime(machineId)
-      .then((records) => {
-        const latest = records.find((r) => !r.reasonRecorded);
-        if (latest) recordDowntimeReason(latest._id, reason, "unplanned").catch(() => {});
-      })
-      .catch(() => {});
   };
 
   const handleBreachCreateTicket = (machineId: string, comment: string) => {
@@ -271,8 +281,16 @@ export function AppSidebar() {
         <ThresholdBreachModal
           alert={openBreach}
           onClose={() => setOpenBreach(null)}
-          onLogReason={handleBreachLogReason}
+          downtimeCount={breachDowntime?.length ?? null}
+          onReportDowntime={handleBreachReportDowntime}
           onCreateTicket={handleBreachCreateTicket}
+        />
+      )}
+      {downtimeReport && (
+        <DowntimeReportModal
+          machineName={downtimeReport.machineName}
+          records={downtimeReport.records}
+          onClose={() => setDowntimeReport(null)}
         />
       )}
     </>

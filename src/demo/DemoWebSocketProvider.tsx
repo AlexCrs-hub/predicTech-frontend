@@ -2,8 +2,8 @@ import React, { useState, useEffect } from "react";
 import { WebSocketContext } from "@/context/WebSocketContext";
 import { DEMO_MACHINES } from "./machines";
 
-type State = "ON" | "IDLE" | "OFF";
-type Health = "HEALTHY" | "STALE" | "DISCONNECTED";
+type State = "on" | "idle" | "off";
+type Health = "healthy" | "stale" | "disconnected";
 
 interface MachineStatePayload {
   machineId: string;
@@ -19,8 +19,8 @@ function initStates(): Record<string, MachineStatePayload> {
       m._id,
       {
         machineId: m._id,
-        state: m.status === "on" ? "ON" : "IDLE",
-        health: "HEALTHY",
+        state: m.status === "on" ? "on" : "idle",
+        health: "healthy",
         timestamp: Date.now(),
       },
     ])
@@ -47,7 +47,7 @@ export const DemoWebSocketProvider: React.FC<{ children: React.ReactNode }> = ({
       setLiveKw((prev) => {
         const next = { ...prev };
         DEMO_MACHINES.forEach((m) => {
-          const isOn = machineStates[m._id]?.state === "ON";
+          const isOn = machineStates[m._id]?.state === "on";
           const target = isOn
             ? m.maxPowerConsumption * 0.78
             : m.downtimeThreshold * 1.15;
@@ -69,10 +69,10 @@ export const DemoWebSocketProvider: React.FC<{ children: React.ReactNode }> = ({
       const base = 60_000 + i * 18_000;
       return setInterval(() => {
         setMachineStates((prev) => {
-          const cur = prev[m._id]?.state ?? "ON";
+          const cur = prev[m._id]?.state ?? "on";
           return {
             ...prev,
-            [m._id]: { ...prev[m._id], state: cur === "ON" ? "IDLE" : "ON", timestamp: Date.now() },
+            [m._id]: { ...prev[m._id], state: cur === "on" ? "idle" : "on", timestamp: Date.now() },
           };
         });
       }, base);
