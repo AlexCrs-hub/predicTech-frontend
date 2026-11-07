@@ -13,15 +13,15 @@ type Period = typeof PERIODS[number];
 
 function PeriodToggle({ value, onChange }: { value: Period; onChange: (p: Period) => void }) {
   return (
-    <div className="flex rounded-md border border-gray-200 dark:border-zinc-700 overflow-hidden">
+    <div className="inline-flex items-center rounded-lg bg-muted p-1 gap-0.5">
       {PERIODS.map((p) => (
         <button
           key={p.label}
           onClick={() => onChange(p)}
           className={`px-3 py-1 text-xs transition-colors ${
             value.label === p.label
-              ? "bg-gray-900 dark:bg-zinc-100 text-white dark:text-zinc-900 font-semibold"
-              : "bg-white dark:bg-zinc-900 text-gray-500 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800"
+              ? "rounded-md bg-background text-foreground shadow-sm font-semibold"
+              : "rounded-md text-muted-foreground hover:text-foreground"
           }`}
         >
           {p.label}
@@ -174,7 +174,7 @@ function TicketCard({ report }: { report: Report }) {
 
           {report.statusHistory && report.statusHistory.length > 0 && (
             <div className="flex flex-col gap-1 mt-1">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">History</p>
+              <p className="text-xs font-medium text-muted-foreground">History</p>
               {report.statusHistory.map((entry, i) => (
                 <div key={i} className="flex gap-2 text-xs text-muted-foreground">
                   <span className="shrink-0">{new Date(entry.changedAt).toLocaleString()}</span>
@@ -208,7 +208,7 @@ export default function TicketsPage() {
       {/* header row with period toggle */}
       <div className="flex items-center gap-3 flex-wrap">
         <Ticket className="size-5 text-muted-foreground" />
-        <h1 className="text-xl font-bold">Tickets</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Tickets</h1>
         <div className="ml-auto flex items-center gap-3">
           <PeriodToggle value={period} onChange={setPeriod} />
           {reports.length > 0 && (
@@ -230,11 +230,15 @@ export default function TicketsPage() {
 
       {/* active */}
       <div className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-          Active ({active.length})
+        <h2 className="flex items-center gap-2 text-sm font-medium text-foreground">
+          Active
+          <span className="text-xs font-medium text-muted-foreground bg-muted rounded-md px-1.5 py-0.5 tabular-nums">{active.length}</span>
         </h2>
         {active.length === 0 ? (
-          <p className="text-muted-foreground text-sm">No active tickets in this period.</p>
+          <div className="rounded-xl border border-dashed bg-card/50 px-6 py-12 text-center">
+            <p className="text-sm font-medium text-foreground">No active tickets</p>
+            <p className="text-sm text-muted-foreground mt-1">Nothing needs attention in this period.</p>
+          </div>
         ) : (
           active.map((r) => <TicketCard key={r.id} report={r} />)
         )}

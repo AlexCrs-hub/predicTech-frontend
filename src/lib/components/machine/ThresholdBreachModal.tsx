@@ -34,17 +34,17 @@ export default function ThresholdBreachModal({ alert, onClose, downtimeCount, on
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-2xl p-6 w-full max-w-md mx-4 flex flex-col gap-4">
+      <div className="bg-card rounded-xl shadow-2xl p-6 w-full max-w-md mx-4 flex flex-col gap-4">
 
         {/* Header */}
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-red-500">Threshold Alert</p>
-            <h2 className="text-lg font-bold text-gray-900 dark:text-zinc-50">{alert.machineName}</h2>
+            <h2 className="text-lg font-bold text-foreground">{alert.machineName}</h2>
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 dark:text-zinc-500 dark:hover:text-zinc-300 transition-colors p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800"
+            className="text-gray-400 hover:text-gray-600 dark:text-zinc-500 dark:hover:text-zinc-300 transition-colors p-1 rounded-lg hover:bg-accent"
             aria-label="Close"
           >
             <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
@@ -56,12 +56,12 @@ export default function ThresholdBreachModal({ alert, onClose, downtimeCount, on
         {/* Values */}
         <div className="flex gap-4 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3">
           <div>
-            <p className="text-xs text-gray-500 dark:text-zinc-400">Current value</p>
+            <p className="text-xs text-muted-foreground">Current value</p>
             <p className="text-2xl font-bold text-red-600">{alert.value.toFixed(1)} <span className="text-sm font-normal">kW</span></p>
           </div>
           <div className="border-l border-red-200 dark:border-red-800 pl-4">
-            <p className="text-xs text-gray-500 dark:text-zinc-400">Threshold</p>
-            <p className="text-2xl font-bold text-gray-700 dark:text-zinc-200">{alert.threshold} <span className="text-sm font-normal">kW</span></p>
+            <p className="text-xs text-muted-foreground">Threshold</p>
+            <p className="text-2xl font-bold text-foreground/80">{alert.threshold} <span className="text-sm font-normal">kW</span></p>
           </div>
         </div>
 
@@ -81,7 +81,7 @@ export default function ThresholdBreachModal({ alert, onClose, downtimeCount, on
                     : "Report downtime"}
               </Button>
               {downtimeCount === 0 && (
-                <p className="text-xs text-gray-500 dark:text-zinc-400">
+                <p className="text-xs text-muted-foreground">
                   Downtime can be reported once it has lasted at least 5 minutes.
                 </p>
               )}
@@ -97,7 +97,7 @@ export default function ThresholdBreachModal({ alert, onClose, downtimeCount, on
 
         {mode === "ticket" && (
           <div className="flex flex-col gap-3">
-            <p className="text-sm font-semibold text-gray-800 dark:text-zinc-200">Add a comment to the ticket:</p>
+            <p className="text-sm font-semibold text-foreground">Add a comment to the ticket:</p>
             <textarea
               className="w-full rounded-md border dark:border-zinc-700 bg-background dark:bg-zinc-800 px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
               rows={3}

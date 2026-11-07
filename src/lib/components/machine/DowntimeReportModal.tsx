@@ -123,15 +123,15 @@ export default function DowntimeReportModal({
       onClick={onClose}
     >
       <div
-        className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-zinc-700 w-full max-w-lg mx-4 p-6 flex flex-col gap-4"
+        className="bg-card rounded-2xl shadow-2xl border border-border w-full max-w-lg mx-4 p-6 flex flex-col gap-4"
         onClick={(e) => e.stopPropagation()}
       >
         {/* header */}
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-red-500">Report downtime</p>
-            <h2 className="text-lg font-bold text-gray-900 dark:text-zinc-50">{machineName}</h2>
-            <p className="text-xs text-gray-500 dark:text-zinc-400 mt-0.5">
+            <h2 className="text-lg font-bold text-foreground">{machineName}</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
               {sorted.length === 1
                 ? "1 downtime"
                 : `${sorted.length} downtimes · ${remaining} left to report`}
@@ -139,7 +139,7 @@ export default function DowntimeReportModal({
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 dark:text-zinc-500 dark:hover:text-zinc-300 transition-colors p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800"
+            className="text-gray-400 hover:text-gray-600 dark:text-zinc-500 dark:hover:text-zinc-300 transition-colors p-1 rounded-lg hover:bg-accent"
             aria-label="Close"
           >
             <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
@@ -150,7 +150,7 @@ export default function DowntimeReportModal({
 
         {/* tabs — one per downtime, earliest first */}
         {sorted.length > 1 && (
-          <div className="flex gap-1 overflow-x-auto pb-1 -mx-1 px-1 border-b border-gray-100 dark:border-zinc-800">
+          <div className="flex gap-1 overflow-x-auto pb-1 -mx-1 px-1 border-b border-border">
             {sorted.map((r, i) => {
               const active = i === index;
               const done = saved.has(r._id);
@@ -161,7 +161,7 @@ export default function DowntimeReportModal({
                   className={`shrink-0 flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-t-lg border-b-2 transition-colors ${
                     active
                       ? "border-blue-500 text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 font-semibold"
-                      : "border-transparent text-gray-500 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800"
+                      : "border-transparent text-muted-foreground hover:bg-accent"
                   }`}
                 >
                   <span className="tabular-nums">#{i + 1}</span>
@@ -176,13 +176,13 @@ export default function DowntimeReportModal({
         {/* period */}
         <div className="flex gap-4 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3">
           <div className="flex-1">
-            <p className="text-xs text-gray-500 dark:text-zinc-400">Period</p>
-            <p className="text-sm font-bold text-gray-900 dark:text-zinc-100 tabular-nums">
+            <p className="text-xs text-muted-foreground">Period</p>
+            <p className="text-sm font-bold text-foreground tabular-nums">
               {fmtDateTime(start)} – {ongoing ? "ongoing" : fmtDateTime(end)}
             </p>
           </div>
           <div className="border-l border-red-200 dark:border-red-800 pl-4">
-            <p className="text-xs text-gray-500 dark:text-zinc-400">Duration</p>
+            <p className="text-xs text-muted-foreground">Duration</p>
             <p className="text-sm font-bold text-red-600 tabular-nums">
               {formatDuration(end.getTime() - start.getTime())}{ongoing ? "+" : ""}
             </p>
@@ -191,16 +191,16 @@ export default function DowntimeReportModal({
 
         {/* type */}
         <div className="flex flex-col gap-2">
-          <p className="text-sm font-semibold text-gray-800 dark:text-zinc-200">Type</p>
-          <div className="flex rounded-md border border-gray-200 dark:border-zinc-700 overflow-hidden text-xs w-fit">
+          <p className="text-sm font-semibold text-foreground">Type</p>
+          <div className="inline-flex items-center rounded-lg bg-muted p-1 gap-0.5 text-xs w-fit">
             {(["unplanned", "planned"] as DowntimeType[]).map((t) => (
               <button
                 key={t}
                 onClick={() => setDraft({ type: t })}
                 className={`px-3 py-1.5 capitalize transition-colors ${
                   draft.type === t
-                    ? "bg-gray-900 dark:bg-zinc-100 text-white dark:text-zinc-900 font-semibold"
-                    : "bg-white dark:bg-zinc-900 text-gray-500 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800"
+                    ? "rounded-md bg-background text-foreground shadow-sm font-semibold"
+                    : "rounded-md text-muted-foreground hover:text-foreground"
                 }`}
               >
                 {t}
@@ -211,20 +211,20 @@ export default function DowntimeReportModal({
 
         {/* reason */}
         <div className="flex flex-col gap-2">
-          <p className="text-sm font-semibold text-gray-800 dark:text-zinc-200">Reason</p>
+          <p className="text-sm font-semibold text-foreground">Reason</p>
           <div className="flex flex-wrap gap-2">
             {ALL_REASONS.map((r) => (
               <button
                 key={r}
                 onClick={() => setDraft({ reason: r })}
-                className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-zinc-700 hover:border-blue-400 transition-colors"
+                className="text-xs px-3 py-1.5 rounded-lg border border-border hover:border-blue-400 transition-colors"
                 style={
                   draft.reason === r
                     ? { backgroundColor: `${REASON_COLOR[r]}20`, borderColor: REASON_COLOR[r], color: REASON_COLOR[r], fontWeight: 600 }
                     : undefined
                 }
               >
-                <span className={draft.reason === r ? "" : "text-gray-600 dark:text-zinc-300"}>{REASON_LABEL[r]}</span>
+                <span className={draft.reason === r ? "" : "text-muted-foreground"}>{REASON_LABEL[r]}</span>
               </button>
             ))}
           </div>
@@ -233,10 +233,10 @@ export default function DowntimeReportModal({
         {error && <p className="text-xs text-red-500">{error}</p>}
 
         {/* actions */}
-        <div className="flex justify-end gap-2 pt-1 border-t border-gray-100 dark:border-zinc-800">
+        <div className="flex justify-end gap-2 pt-1 border-t border-border">
           <button
             onClick={onClose}
-            className="mt-3 text-sm px-4 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors"
+            className="mt-3 text-sm px-4 py-2 rounded-lg border border-border text-muted-foreground hover:bg-accent transition-colors"
           >
             Close
           </button>

@@ -1,4 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { Link } from "react-router-dom";
+import { Plus } from "lucide-react";
+import { PageHeader } from "@/lib/components/ui/field";
+import { secondaryButtonClass } from "@/lib/components/ui/fieldStyles";
 import { fetchAllMachines } from "@/lib/api/machineApi";
 import MachineListElement from "@/lib/components/machineList/MachineListElement";
 import { Machine } from "@/lib/components/machineList/types";
@@ -213,13 +217,26 @@ export default function ActiveMachineList() {
   const SectionHeader = ({ label, count, dot }: { label: string; count: number; dot: string }) => (
     <div className="flex items-center gap-2 mb-3">
       <span className={`w-2 h-2 rounded-full ${dot}`} />
-      <span className="text-xs font-semibold uppercase tracking-widest text-gray-500 dark:text-zinc-400">{label}</span>
-      <span className="text-xs text-gray-400 dark:text-zinc-600 ml-1">({count})</span>
+      <span className="text-sm font-medium text-foreground">{label}</span>
+      <span className="text-xs font-medium text-muted-foreground bg-muted rounded-md px-1.5 py-0.5 tabular-nums">{count}</span>
     </div>
   );
 
   return (
-    <div className="flex flex-col gap-8 pb-10 bg-gray-50 dark:bg-zinc-950 min-h-screen p-5">
+    <div className="w-full max-w-screen-2xl mx-auto flex flex-col gap-8 p-4 sm:p-6 pb-10">
+      <PageHeader
+        title="Machines"
+        description={
+          machines.length > 0
+            ? `${machines.length} machine${machines.length !== 1 ? "s" : ""} · ${enriched.filter((m) => m.currentState === "on").length} running`
+            : "Live status of every connected machine."
+        }
+        actions={
+          <Link to="/app/add-machine" className={secondaryButtonClass}>
+            <Plus className="size-4" /> Add machine
+          </Link>
+        }
+      />
       {withTickets.length > 0 && (
         <section>
           <SectionHeader label="Open tickets" count={withTickets.length} dot="bg-amber-400" />
@@ -240,7 +257,7 @@ export default function ActiveMachineList() {
       )}
 
       {fetchStatus === "loading" && (
-        <p className="text-sm text-gray-400 dark:text-zinc-500 animate-pulse">Loading machines…</p>
+        <p className="text-sm text-muted-foreground animate-pulse">Loading machines…</p>
       )}
       {fetchStatus === "auth" && (
         <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-5 py-4 text-sm text-amber-700 dark:text-amber-400">
@@ -253,7 +270,7 @@ export default function ActiveMachineList() {
         </div>
       )}
       {fetchStatus === "empty" && (
-        <p className="text-sm text-gray-400 dark:text-zinc-500">No machines found for this account.</p>
+        <p className="text-sm text-muted-foreground">No machines found for this account.</p>
       )}
     </div>
   );

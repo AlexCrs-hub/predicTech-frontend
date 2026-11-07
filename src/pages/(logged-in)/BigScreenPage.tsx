@@ -6,19 +6,28 @@ import { fetchAllMachines } from "@/lib/api/machineApi";
 import { Machine } from "@/lib/components/machineList/types";
 import { getMachineUtilization } from "@/lib/utils/machineSimulation";
 
-const STATE_BG: Record<Machine["currentState"], string> = {
-  normal: "bg-green-500",
-  alarm: "bg-red-500",
-  "unplanned downtime": "bg-orange-500",
-  "planned downtime": "bg-gray-400",
+// Same rules as the machine list/page: "stale" is a short data gap, offline means disconnected
+type BigState = "running" | "idle" | "offline" | "nodata";
+
+const STATE_BG: Record<BigState, string> = {
+  running: "bg-green-600",
+  idle:    "bg-amber-500",
+  offline: "bg-zinc-600",
+  nodata:  "bg-zinc-700",
 };
 
-const STATE_LABEL: Record<Machine["currentState"], string> = {
-  normal: "Running",
-  alarm: "Alarm",
-  "unplanned downtime": "Unpl. DT",
-  "planned downtime": "Planned DT",
+const STATE_LABEL: Record<BigState, string> = {
+  running: "Running",
+  idle:    "Idle",
+  offline: "Offline",
+  nodata:  "No data",
 };
+
+function bigState(ws?: { state?: string; health?: string }): BigState {
+  if (!ws) return "nodata";
+  if (ws.health?.toLowerCase() === "disconnected") return "offline";
+  return ws.state?.toLowerCase() === "on" ? "running" : "idle";
+}
 
 function BigMachineCard({
   machine,
@@ -26,7 +35,7 @@ function BigMachineCard({
   liveKw,
 }: {
   machine: Machine;
-  currentState: Machine["currentState"];
+  currentState: BigState;
   liveKw: number;
 }) {
   const u = getMachineUtilization(machine._id);
@@ -131,14 +140,7 @@ export default function BigScreenPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {machines.map((m) => {
           const ws = machineStates[m._id];
-          const currentState: Machine["currentState"] =
-            ws?.health?.toLowerCase() === "healthy"
-              ? "normal"
-              : ws?.health?.toLowerCase() === "stale"
-              ? "unplanned downtime"
-              : ws?.health?.toLowerCase() === "disconnected"
-              ? "alarm"
-              : "planned downtime";
+          const currentState = bigState(ws);
 
           return (
             <Link key={m._id} to={`/app/machine?machineId=${m._id}`}>

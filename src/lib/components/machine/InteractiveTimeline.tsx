@@ -20,6 +20,7 @@ import {
   REASON_LABEL,
   UNREPORTED_COLOR,
 } from "@/lib/api/downtimeRecordsApi";
+import { useIsDark } from "@/lib/hooks/useIsDark";
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
@@ -141,17 +142,17 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: any[] 
   const d = payload[0]?.payload as DataPoint;
   if (!d) return null;
   return (
-    <div className="bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-xl p-3 shadow-xl text-xs min-w-[120px]">
-      <p className="font-semibold text-gray-700 dark:text-zinc-200 mb-1.5">{formatFull(d.t)}</p>
+    <div className="bg-white dark:bg-zinc-800 border border-border rounded-xl p-3 shadow-xl text-xs min-w-[120px]">
+      <p className="font-semibold text-foreground/80 mb-1.5">{formatFull(d.t)}</p>
       {d.state && (
         <div className="flex items-center gap-1.5 mb-1">
           <span className="w-2 h-2 rounded-full" style={{ backgroundColor: STATE_COLOR[d.state] }} />
-          <span className="text-gray-600 dark:text-zinc-300">{STATE_LABEL[d.state]}</span>
+          <span className="text-muted-foreground">{STATE_LABEL[d.state]}</span>
         </div>
       )}
-      <p className="text-gray-500 dark:text-zinc-400">
+      <p className="text-muted-foreground">
         Power:{" "}
-        <span className="font-bold text-gray-800 dark:text-zinc-100">{d.power} kW</span>
+        <span className="font-bold text-foreground">{d.power} kW</span>
       </p>
     </div>
   );
@@ -173,6 +174,7 @@ export default function InteractiveTimeline({
   const [period, setPeriod] = useState<PeriodKey>("24h");
   const [realData, setRealData] = useState<DataPoint[] | null>(null);
   const [downtimes, setDowntimes] = useState<DowntimeRecord[]>([]);
+  const isDark = useIsDark();
 
   const { hours, granularity } = PERIODS[period];
 
@@ -221,28 +223,28 @@ export default function InteractiveTimeline({
   const unreportedCount = downtimes.filter((r) => !r.reasonRecorded).length;
 
   return (
-    <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm p-5">
+    <div className="rounded-xl border border-border bg-card shadow-sm p-5">
       {/* header row */}
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">
+          <p className="text-sm font-semibold text-foreground">
             Historical Timeline
           </p>
-          <p className="text-xs text-gray-400 dark:text-zinc-600 mt-0.5">
+          <p className="text-xs text-muted-foreground/70 mt-0.5">
             Drag the selector below to zoom · click a downtime to report it
             {simulated && " · simulated power data"}
           </p>
         </div>
         {/* period tabs */}
-        <div className="flex rounded-lg border border-gray-200 dark:border-zinc-700 overflow-hidden text-xs">
+        <div className="inline-flex items-center rounded-lg bg-muted p-1 gap-0.5 text-xs">
           {(Object.entries(PERIODS) as [PeriodKey, typeof PERIODS[PeriodKey]][]).map(([key, cfg]) => (
             <button
               key={key}
               onClick={() => setPeriod(key)}
               className={`px-3 py-1.5 font-medium transition-colors ${
                 period === key
-                  ? "bg-gray-900 dark:bg-zinc-100 text-white dark:text-zinc-900"
-                  : "text-gray-500 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800"
+                  ? "rounded-md bg-background text-foreground shadow-sm"
+                  : "rounded-md text-muted-foreground hover:text-foreground"
               }`}
             >
               {cfg.label}
@@ -253,7 +255,7 @@ export default function InteractiveTimeline({
 
       {/* main chart */}
       {realData === null ? (
-        <div className="flex items-center justify-center h-[300px] text-xs text-gray-400 dark:text-zinc-500 animate-pulse">
+        <div className="flex items-center justify-center h-[300px] text-xs text-muted-foreground animate-pulse">
           Loading timeline…
         </div>
       ) : (
@@ -296,8 +298,7 @@ export default function InteractiveTimeline({
 
             <CartesianGrid
               strokeDasharray="3 3"
-              stroke="#f0f0f0"
-              className="dark:[stroke:#27272a]"
+              stroke={isDark ? "#27272a" : "#f0f0f0"}
               vertical={false}
             />
             <XAxis
@@ -327,9 +328,8 @@ export default function InteractiveTimeline({
                 dataKey="t"
                 startIndex={brushStart}
                 height={36}
-                stroke="#e5e7eb"
-                fill="#f9fafb"
-                className="dark:[fill:#18181b] dark:[stroke:#3f3f46]"
+                stroke={isDark ? "#3f3f46" : "#e5e7eb"}
+                fill={isDark ? "#18181b" : "#f9fafb"}
                 travellerWidth={8}
                 gap={1}
                 tickFormatter={(t: number) => formatTick(t, period)}
@@ -353,7 +353,7 @@ export default function InteractiveTimeline({
       {/* downtimes in the selected period */}
       {downtimes.length > 0 && (
         <div className="mt-4 flex flex-col gap-2">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">
+          <p className="text-sm font-semibold text-foreground">
             Downtimes · {downtimes.length}
             {unreportedCount > 0 && (
               <span className="ml-2 normal-case tracking-normal font-semibold text-red-500">
@@ -385,10 +385,10 @@ export default function InteractiveTimeline({
       )}
 
       {/* legend */}
-      <div className="flex items-center flex-wrap gap-x-5 gap-y-1.5 mt-4 pt-3 border-t border-gray-100 dark:border-zinc-800">
+      <div className="flex items-center flex-wrap gap-x-5 gap-y-1.5 mt-4 pt-3 border-t border-border">
         {simulated &&
           (Object.entries(STATE_LABEL) as [State, string][]).map(([s, lbl]) => (
-            <span key={s} className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-zinc-400">
+            <span key={s} className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <span
                 className="inline-block w-3 h-3 rounded-sm"
                 style={{ backgroundColor: STATE_COLOR[s], opacity: 0.6 }}
@@ -396,15 +396,15 @@ export default function InteractiveTimeline({
               {lbl}
             </span>
           ))}
-        <span className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-zinc-400">
+        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span className="inline-block w-3 h-3 rounded-sm" style={{ backgroundColor: UNREPORTED_COLOR, opacity: 0.5 }} />
           Downtime (not reported)
         </span>
-        <span className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-zinc-400">
+        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span className="inline-block w-3 h-3 rounded-sm bg-gradient-to-r from-indigo-400 via-blue-400 to-amber-400 opacity-60" />
           Downtime (reported — colour = reason)
         </span>
-        <span className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-zinc-400 ml-auto">
+        <span className="flex items-center gap-1.5 text-xs text-muted-foreground ml-auto">
           <span className="inline-block w-5 h-0.5 rounded bg-indigo-500" />
           Power (kW)
         </span>

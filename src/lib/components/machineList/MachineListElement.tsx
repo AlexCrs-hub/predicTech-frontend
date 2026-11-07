@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { Play, Square, Ticket } from "lucide-react";
 import { Machine } from "./types";
 import { useNotifications } from "@/context/NotificationContext";
 import ReportDowntimeButton from "@/lib/components/machine/ReportDowntimeButton";
@@ -23,75 +24,48 @@ const STATE_LABEL: Record<Machine["currentState"], string> = {
   "in maintenance": "Maintenance",
 };
 
-const CHART = {
-  primary: "#3b82f6",
-  idle:    "#94a3b8",
-};
-
-type Colors = { badge: string; dot: string; stripClass: string; cardClass: string };
-
-const STATE_COLORS: Record<Machine["currentState"], Colors> = {
+const STATE_BADGE: Record<Machine["currentState"], { badge: string; dot: string }> = {
   "on": {
-    stripClass: "bg-green-500",
-    badge: "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700",
-    dot: "bg-green-500",
-    cardClass: "border-green-300 dark:border-green-800 bg-green-50 dark:bg-green-900/15",
+    badge: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 ring-emerald-500/20",
+    dot: "bg-emerald-500",
   },
   "idle": {
-    stripClass: "bg-amber-400",
-    badge: "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-500 border border-amber-300 dark:border-amber-700",
-    dot: "bg-amber-400",
-    cardClass: "border-gray-300 dark:border-zinc-700 bg-gray-100/80 dark:bg-zinc-800/80 opacity-80",
+    badge: "bg-amber-500/10 text-amber-700 dark:text-amber-400 ring-amber-500/20",
+    dot: "bg-amber-500",
   },
   "in maintenance": {
-    stripClass: "bg-blue-500",
-    badge: "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 border border-blue-300 dark:border-blue-700",
+    badge: "bg-blue-500/10 text-blue-700 dark:text-blue-400 ring-blue-500/20",
     dot: "bg-blue-500",
-    cardClass: "border-blue-300 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/10",
   },
 };
 
-// ── Donut ring — shows "—" when no data ──────────────────────────────────────
+// ── Utilization ring — shows "—" when no data ────────────────────────────────
 
-function DonutRing({ pct, color }: { pct: number | null; color: string }) {
-  const r    = 42;
+function UtilizationRing({ pct }: { pct: number | null }) {
+  const r    = 30;
   const circ = 2 * Math.PI * r;
   const filled = pct != null ? (Math.min(pct, 100) / 100) * circ : 0;
   return (
-    <svg width="100" height="100" viewBox="0 0 100 100">
-      <circle cx="50" cy="50" r={r} fill="none" strokeWidth="9" stroke="#e5e7eb" className="dark:[stroke:#27272a]" />
-      {pct != null && (
-        <circle cx="50" cy="50" r={r} fill="none" stroke={color} strokeWidth="9" strokeLinecap="round"
-          strokeDasharray={`${filled} ${circ - filled}`} transform="rotate(-90 50 50)" />
-      )}
-      <text x="50" y="46" textAnchor="middle" fontSize={pct != null ? "17" : "20"} fontWeight="800"
-        fill={pct != null ? color : "#9ca3af"}>
+    <div className="relative w-[76px] h-[76px] shrink-0">
+      <svg width="76" height="76" viewBox="0 0 76 76" className="-rotate-90">
+        <circle cx="38" cy="38" r={r} fill="none" strokeWidth="7" className="stroke-muted" />
+        {pct != null && (
+          <circle cx="38" cy="38" r={r} fill="none" strokeWidth="7" strokeLinecap="round"
+            className="stroke-primary" strokeDasharray={`${filled} ${circ - filled}`} />
+        )}
+      </svg>
+      <span className="absolute inset-0 flex items-center justify-center text-base font-semibold tabular-nums text-foreground">
         {pct != null ? `${pct}%` : "—"}
-      </text>
-      <text x="50" y="61" textAnchor="middle" fontSize="9" fill="#9ca3af">Utilization</text>
-    </svg>
-  );
-}
-
-function StatCell({ label, value, color }: { label: string; value: string; color?: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-3 flex-1">
-      <span className="text-base font-bold leading-none" style={{ color: color ?? "#111827" }}>{value}</span>
-      <span className="text-[10px] text-gray-400 dark:text-zinc-500 mt-1 uppercase tracking-wide">{label}</span>
+      </span>
     </div>
   );
 }
 
-function StatBar({ label, pct, color }: { label: string; pct: number; color: string }) {
+function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex justify-between text-xs">
-        <span className="text-gray-400 dark:text-zinc-500">{label}</span>
-        <span className="font-semibold text-gray-800 dark:text-zinc-200">{pct}%</span>
-      </div>
-      <div className="h-1.5 rounded-full bg-gray-100 dark:bg-zinc-800 overflow-hidden">
-        <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />
-      </div>
+    <div className="flex items-baseline justify-between gap-3 text-sm">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-medium tabular-nums text-foreground">{value}</span>
     </div>
   );
 }
@@ -105,7 +79,7 @@ export default function MachineListElement({
 }: Props) {
   const runtimePct = utilizationPct != null ? Math.round(utilizationPct) : null;
   const idlePct    = utilizationPct != null ? Math.max(0, Math.round(100 - utilizationPct)) : null;
-  const colors     = STATE_COLORS[currentState] ?? STATE_COLORS["idle"];
+  const state      = STATE_BADGE[currentState] ?? STATE_BADGE["idle"];
   const { reports } = useNotifications();
   const openTickets = reports.filter((r) => r.machineId === _id && r.status !== "fixed");
 
@@ -132,122 +106,95 @@ export default function MachineListElement({
   const powerPct = liveKw > 0 && maxPowerConsumption
     ? Math.min(100, (liveKw / maxPowerConsumption) * 100)
     : 0;
-  const powerColor = powerPct >= 90 ? "#ef4444" : powerPct >= 70 ? "#f59e0b" : "#3b82f6";
+  const powerBar = powerPct >= 90 ? "bg-red-500" : powerPct >= 70 ? "bg-amber-500" : "bg-primary";
 
-  const btn = (label: string, onClick: () => Promise<boolean>, cls: string) => {
+  const logButton = (label: React.ReactNode, onClick: () => Promise<boolean>) => {
     const isLoading = logState === "loading";
-    const displayLabel = logState === "ok" ? "✓ Logged"
+    const content = logState === "ok" ? "✓ Logged"
       : logState === "error" ? "✗ Failed"
       : isLoading ? "…"
       : label;
-    const displayCls = logState === "ok"
-      ? "border-green-400 text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20"
+    const tone = logState === "ok"
+      ? "text-emerald-700 dark:text-emerald-400 border-emerald-500/40"
       : logState === "error"
-      ? "border-red-400 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20"
-      : cls;
+      ? "text-destructive border-destructive/40"
+      : "text-foreground border-input hover:bg-accent";
     return (
       <button
         type="button"
         disabled={isLoading}
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleLog(onClick); }}
-        className={`flex-1 text-[11px] font-semibold py-1.5 rounded-lg border transition-colors disabled:opacity-50 ${displayCls}`}
+        className={`flex-1 inline-flex items-center justify-center gap-1.5 h-8 px-2 rounded-lg border bg-background text-xs font-medium shadow-sm transition-colors disabled:opacity-50 ${tone}`}
       >
-        {displayLabel}
+        {content}
       </button>
     );
   };
 
   return (
-    <Link to={`/app/machine?machineId=${_id}`} className="block group">
-      <div className={`rounded-2xl border shadow-sm overflow-hidden group-hover:shadow-lg group-hover:-translate-y-1 transition-all duration-200 ${
-        openTickets.length > 0
-          ? "border-yellow-400 dark:border-yellow-600 bg-yellow-50/60 dark:bg-yellow-900/10"
-          : colors.cardClass
-      }`}>
-
-        {/* top accent strip */}
-        <div className={`h-1.5 w-full ${openTickets.length > 0 ? "bg-amber-400" : colors.stripClass}`} />
+    <Link to={`/app/machine?machineId=${_id}`} className="block group focus-visible:outline-none">
+      <div className="h-full rounded-xl border bg-card text-card-foreground shadow-sm transition-all duration-200 group-hover:shadow-md group-hover:border-foreground/15 group-focus-visible:ring-2 group-focus-visible:ring-ring flex flex-col">
 
         {/* header */}
-        <div className="flex items-center justify-between px-5 pt-4 pb-1 gap-2">
-          <span className="font-bold text-base text-gray-900 dark:text-zinc-50 truncate leading-snug">{name}</span>
+        <div className="flex items-start justify-between gap-2 px-5 pt-4">
+          <div className="min-w-0">
+            <p className="font-semibold text-base text-foreground truncate leading-tight">{name}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {maxPowerConsumption ? `Max ${maxPowerConsumption} kW` : "No power rating"}
+            </p>
+          </div>
           <div className="flex items-center gap-1.5 shrink-0">
             {openTickets.length > 0 && (
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-500 border border-yellow-300 dark:border-yellow-700">
-                {openTickets.length} ticket{openTickets.length !== 1 ? "s" : ""}
+              <span
+                title={`${openTickets.length} open ticket${openTickets.length !== 1 ? "s" : ""}`}
+                className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-400 ring-1 ring-inset ring-amber-500/20"
+              >
+                <Ticket className="size-3" />
+                {openTickets.length}
               </span>
             )}
             {currentState === "in maintenance" && maintenanceSince && (
-              <span className="text-[10px] font-mono font-bold text-blue-600 dark:text-blue-400">
+              <span className="text-[11px] font-mono font-medium text-blue-600 dark:text-blue-400 tabular-nums">
                 {fmt(elapsed)}
               </span>
             )}
-            <span className={`flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${colors.badge}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${colors.dot}`} />
+            <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-md ring-1 ring-inset whitespace-nowrap ${state.badge}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${state.dot}`} />
               {STATE_LABEL[currentState]}
             </span>
           </div>
         </div>
 
-        {/* donut + idle bar */}
-        <div className="flex items-center gap-4 px-5 py-4">
-          <DonutRing pct={runtimePct} color={CHART.primary} />
-          <div className="flex-1 flex flex-col gap-2">
-            {idlePct != null && <StatBar label="Idle" pct={idlePct} color={CHART.idle} />}
+        {/* utilization + stats */}
+        <div className="flex items-center gap-5 px-5 py-4">
+          <UtilizationRing pct={runtimePct} />
+          <div className="flex-1 flex flex-col gap-1.5 min-w-0">
+            <Stat label="Utilization" value={runtimePct != null ? `${runtimePct}%` : "—"} />
+            <Stat label="Idle" value={idlePct != null ? `${idlePct}%` : "—"} />
+            <Stat label="Cycles" value={realCycles != null ? String(realCycles) : "—"} />
           </div>
         </div>
 
-        {/* 2-column stat row */}
-        <div className="flex border-t border-gray-100 dark:border-zinc-800/60 divide-x divide-gray-100 dark:divide-zinc-800/60">
-          <StatCell
-            label="Utilization"
-            value={runtimePct != null ? `${runtimePct}%` : "—"}
-            color={runtimePct != null ? CHART.primary : "#9ca3af"}
-          />
-          <StatCell
-            label="Cycles"
-            value={realCycles != null ? String(realCycles) : "—"}
-            color={realCycles != null ? "#6b7280" : "#9ca3af"}
-          />
-        </div>
-
-        {/* power footer */}
-        <div className="flex items-center justify-end px-5 py-3 border-t border-gray-100 dark:border-zinc-800/60"
-          style={{ backgroundColor: `${CHART.primary}12` }}>
-          <div className="flex items-center gap-4 text-xs">
-            <span className="text-gray-400 dark:text-zinc-500">
-              Live <span className="font-semibold text-gray-800 dark:text-zinc-100">{liveKw > 0 ? `${liveKw.toFixed(1)} kW` : "—"}</span>
+        {/* live power */}
+        <div className="px-5 pb-4">
+          <div className="flex items-center justify-between text-xs mb-1.5">
+            <span className="text-muted-foreground">Live power</span>
+            <span className="font-medium tabular-nums text-foreground">
+              {liveKw > 0 ? `${liveKw.toFixed(1)} kW` : "—"}
+              {maxPowerConsumption ? <span className="text-muted-foreground"> / {maxPowerConsumption} kW</span> : null}
             </span>
-            {maxPowerConsumption && (
-              <span className="text-gray-400 dark:text-zinc-500">
-                Max <span className="font-semibold text-gray-800 dark:text-zinc-100">{maxPowerConsumption} kW</span>
-              </span>
-            )}
+          </div>
+          <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+            <div className={`h-full rounded-full transition-all duration-500 ${powerBar}`} style={{ width: `${powerPct}%` }} />
           </div>
         </div>
-
-        {/* power consumption bar */}
-        {maxPowerConsumption && maxPowerConsumption > 0 && (
-          <div className="px-5 py-3 border-t border-gray-100 dark:border-zinc-800/60">
-            <div className="flex items-center justify-between text-xs mb-1.5">
-              <span className="font-medium text-gray-500 dark:text-zinc-400">Power consumption</span>
-              <span className="font-semibold tabular-nums" style={{ color: powerColor }}>
-                {liveKw > 0 ? `${liveKw.toFixed(1)}` : "—"} / {maxPowerConsumption} kW
-              </span>
-            </div>
-            <div className="h-1.5 rounded-full bg-gray-200 dark:bg-zinc-700 overflow-hidden">
-              <div className="h-full rounded-full transition-all duration-500"
-                style={{ width: `${powerPct}%`, backgroundColor: powerColor }} />
-            </div>
-          </div>
-        )}
 
         {/* work interval logging + downtime reporting */}
-        <div className="flex items-center gap-1.5 px-4 py-2.5 border-t border-gray-100 dark:border-zinc-800/60">
+        <div className="mt-auto flex items-center gap-2 px-4 py-3 border-t">
           {currentState !== "in maintenance" && !intervalActive && onStart &&
-            btn("▶ Log start", onStart, "border-green-300 dark:border-green-700 text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20")}
+            logButton(<><Play className="size-3.5" /> Log start</>, onStart)}
           {currentState !== "in maintenance" && intervalActive && onStop &&
-            btn("■ Log stop", onStop, "border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20")}
+            logButton(<><Square className="size-3.5" /> Log stop</>, onStop)}
           <ReportDowntimeButton
             machineId={_id}
             machineName={name}

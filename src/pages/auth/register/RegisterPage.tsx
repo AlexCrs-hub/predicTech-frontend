@@ -1,19 +1,12 @@
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/lib/components/ui/form";
-import { Input } from "@/lib/components/ui/input";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "@/lib/hooks/use-toast";
 import { Link, useNavigate } from "react-router-dom";
 import { Toaster } from "@/lib/components/ui/toaster";
-import { Button } from "@/lib/components/ui/button";
+import { Field } from "@/lib/components/ui/field";
+import { inputClass, inputStateClass, primaryButtonClass } from "@/lib/components/ui/fieldStyles";
+import AuthLayout from "../AuthLayout";
 import { useState } from "react";
 import { registerUser } from "@/lib/api/authApi";
 
@@ -69,113 +62,53 @@ export default function RegisterPage() {
     }
   }
 
+  const { errors } = form.formState;
+
+  const fields = [
+    { name: "name", label: "Name", type: "text", placeholder: "Your name", autoComplete: "name" },
+    { name: "email", label: "Email", type: "email", placeholder: "you@company.com", autoComplete: "email" },
+    { name: "password", label: "Password", type: "password", placeholder: "At least 6 characters", autoComplete: "new-password" },
+    { name: "repeatPassword", label: "Repeat password", type: "password", placeholder: "••••••••", autoComplete: "new-password" },
+  ] as const;
+
   return (
-    <div className="bg-gradient-to-r from-[#1F35EB] to-[#D56FDF] h-screen flex items-center justify-center">
-      <Form {...form}>
-        <form
-          onSubmit={form.handleSubmit(onSubmit)}
-          className="w-1/4 pb-8 space-y-3 flex flex-col items-center bg-white rounded-xl border border-white/30 backdrop-blur-sm p-4"
-        >
-          <h1 className="text-3xl font-medium text-black/60">Register to</h1>
-          <h1 className="text-4xl font-medium pb-4">PredicTech</h1>
-
-          {serverError && (
-            <div className="flex items-start gap-2 rounded-md bg-red-50 border border-red-200 px-3 py-2 w-3/5">
-              <span className="text-red-500 mt-0.5 shrink-0">✕</span>
-              <p className="text-sm text-red-700">{serverError}</p>
-            </div>
-          )}
-
-          <FormField
-            control={form.control}
-            name="email"
-            render={({ field }) => (
-              <FormItem className="text-center w-3/5">
-                <FormLabel className="text-lg">Email</FormLabel>
-                <FormControl>
-                  <Input
-                    className="placeholder:text-black/50 rounded"
-                    placeholder="example1@example.com"
-                    {...field}
-                    type="email"
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="name"
-            render={({ field }) => (
-              <FormItem className="text-center w-3/5">
-                <FormLabel className="text-lg">Name</FormLabel>
-                <FormControl>
-                  <Input
-                    className="placeholder:text-black/50 rounded"
-                    placeholder="Michal"
-                    {...field}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="password"
-            render={({ field }) => (
-              <FormItem className="text-center w-3/5">
-                <FormLabel className="text-lg">Password</FormLabel>
-                <FormControl>
-                  <Input
-                    className="placeholder:text-black/50 rounded"
-                    type="password"
-                    {...field}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="repeatPassword"
-            render={({ field }) => (
-              <FormItem className="text-center w-3/5">
-                <FormLabel className="text-lg">Repeat Password</FormLabel>
-                <FormControl>
-                  <Input
-                    className="placeholder:text-black/50 rounded"
-                    type="password"
-                    {...field}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <div className="w-3/5 justify-between flex gap-4">
-            <Button
-              type="submit"
-              className="w-1/2 rounded bg-predic hover:bg-predic/80 text-white h-10"
-              disabled={isLoading}
-            >
-              {isLoading ? "Registering..." : "Submit"}
-            </Button>
-            <Link
-              to="/login"
-              className="w-1/2 rounded h-10 bg-predic text-white hover:bg-predic/80 duration-100 flex items-center justify-center text-sm font-medium"
-            >
-              Sign in
-            </Link>
+    <AuthLayout
+      title="Create an account"
+      subtitle="Start monitoring your machines with PredicTech."
+      footer={
+        <>
+          Already have an account?{" "}
+          <Link to="/login" className="font-semibold text-white underline underline-offset-2">
+            Log in
+          </Link>
+        </>
+      }
+    >
+      <form onSubmit={form.handleSubmit(onSubmit)} noValidate className="flex flex-col gap-4">
+        {serverError && (
+          <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-3 py-2.5 text-sm text-red-700 dark:text-red-300">
+            {serverError}
           </div>
-        </form>
-      </Form>
+        )}
+
+        {fields.map((f) => (
+          <Field key={f.name} label={f.label} htmlFor={`reg-${f.name}`} error={errors[f.name]?.message}>
+            <input
+              id={`reg-${f.name}`}
+              {...form.register(f.name)}
+              type={f.type}
+              placeholder={f.placeholder}
+              autoComplete={f.autoComplete}
+              className={`${inputClass} ${inputStateClass(!!errors[f.name])}`}
+            />
+          </Field>
+        ))}
+
+        <button type="submit" disabled={isLoading} className={`${primaryButtonClass} w-full mt-2`}>
+          {isLoading ? "Creating account…" : "Create account"}
+        </button>
+      </form>
       <Toaster />
-    </div>
+    </AuthLayout>
   );
 }

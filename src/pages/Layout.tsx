@@ -12,7 +12,7 @@ export default function Layout() {
     <SidebarProvider className="flex w-max-[1920px]">
       {SHOW_NOTIFICATIONS_SIDEBAR && <AppSidebar />}
       <Navbar />
-      <div className="pt-[4.5rem] h-screen w-full">
+      <div className="pt-14 min-h-screen w-full bg-muted/30">
         {SHOW_NOTIFICATIONS_SIDEBAR && <CustomTrigger />}
         <Outlet />
       </div>

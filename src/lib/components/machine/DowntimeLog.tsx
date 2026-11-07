@@ -41,7 +41,7 @@ function EntryRow({
   const dur = formatDuration(downtimeEnd(record).getTime() - new Date(record.startedAt).getTime());
 
   return (
-    <div className="flex flex-col gap-1.5 px-3 py-2 rounded-lg bg-gray-50 dark:bg-zinc-800/60 border border-gray-100 dark:border-zinc-800">
+    <div className="flex flex-col gap-1.5 px-3 py-2 rounded-lg bg-muted/60 border border-border">
       {/* main row */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
@@ -57,7 +57,7 @@ function EntryRow({
               Needs reason
             </span>
           )}
-          <span className="text-[10px] text-gray-400 dark:text-zinc-500">
+          <span className="text-[10px] text-muted-foreground">
             {record.downtimeType && (
               <span className="mr-1 capitalize">{record.downtimeType}</span>
             )}
@@ -65,11 +65,11 @@ function EntryRow({
           </span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <span className="text-[10px] text-gray-400 dark:text-zinc-500">{startTime}</span>
+          <span className="text-[10px] text-muted-foreground">{startTime}</span>
           {!record.reasonRecorded && (
             <button
               onClick={() => setOpen((o) => !o)}
-              className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-gray-300 dark:border-zinc-600 text-gray-500 dark:text-zinc-400 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+              className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-gray-300 dark:border-zinc-600 text-muted-foreground hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
             >
               {open ? "Cancel" : "Log ↓"}
             </button>
@@ -79,7 +79,7 @@ function EntryRow({
 
       {/* reason form */}
       {open && !record.reasonRecorded && (
-        <div className="flex flex-col gap-2 pt-1 border-t border-gray-200 dark:border-zinc-700">
+        <div className="flex flex-col gap-2 pt-1 border-t border-border">
           <div className="flex flex-wrap gap-1">
             {ALL_REASONS.map((r) => (
               <button
@@ -95,15 +95,15 @@ function EntryRow({
             ))}
           </div>
           <div className="flex gap-1.5 items-center">
-            <div className="flex rounded-md border border-gray-200 dark:border-zinc-700 overflow-hidden text-[10px]">
+            <div className="inline-flex items-center rounded-lg bg-muted p-1 gap-0.5 text-[10px]">
               {(["planned", "unplanned"] as DowntimeType[]).map((t) => (
                 <button
                   key={t}
                   onClick={() => setType(t)}
                   className={`px-2 py-1 capitalize transition-colors ${
                     type === t
-                      ? "bg-gray-900 dark:bg-zinc-100 text-white dark:text-zinc-900 font-semibold"
-                      : "bg-white dark:bg-zinc-900 text-gray-500 dark:text-zinc-400"
+                      ? "rounded-md bg-background text-foreground shadow-sm font-semibold"
+                      : "bg-card text-muted-foreground"
                   }`}
                 >
                   {t}
@@ -165,7 +165,7 @@ export default function DowntimeLog({
   return (
     <div className="w-full flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">
+        <span className="text-sm font-semibold text-foreground">
           Downtime Records
         </span>
         {unresolvedCount > 0 && (
@@ -175,11 +175,11 @@ export default function DowntimeLog({
         )}
       </div>
 
-      {loading && <p className="text-xs text-gray-400 dark:text-zinc-500">Loading…</p>}
+      {loading && <p className="text-xs text-muted-foreground">Loading…</p>}
       {error   && <p className="text-xs text-red-500">Failed to load records.</p>}
 
       {!loading && !error && records.length === 0 && (
-        <p className="text-xs text-gray-400 dark:text-zinc-500">
+        <p className="text-xs text-muted-foreground">
           No downtime records{periodHours ? " in selected period" : ""}.
         </p>
       )}

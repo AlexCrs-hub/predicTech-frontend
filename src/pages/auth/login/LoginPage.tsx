@@ -4,8 +4,10 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "@/lib/hooks/use-toast";
-import { useNavigate } from "react-router-dom";
-import { Button } from "@/lib/components/ui/button";
+import { Link, useNavigate } from "react-router-dom";
+import { Field } from "@/lib/components/ui/field";
+import { inputClass, inputStateClass, primaryButtonClass } from "@/lib/components/ui/fieldStyles";
+import AuthLayout from "../AuthLayout";
 import { loginUser } from "@/lib/api/authApi";
 
 const FormSchema = z.object({
@@ -50,56 +52,51 @@ export default function LoginPage() {
   const { errors } = form.formState;
 
   return (
-    <div className="bg-gradient-to-r from-[#1F35EB] to-[#D56FDF] h-screen flex justify-center items-center">
-      <form
-        onSubmit={form.handleSubmit(onSubmit)}
-        className="bg-white p-6 rounded-lg w-full max-w-sm flex flex-col gap-1"
-      >
-        <h1 className="text-xl font-bold mb-3">Log in to PredicTech</h1>
-
-        {/* server-side error banner */}
+    <AuthLayout
+      title="Log in"
+      subtitle="Welcome back — sign in to your workspace."
+      footer={
+        <>
+          Don't have an account?{" "}
+          <Link to="/register" className="font-semibold text-white underline underline-offset-2">
+            Register
+          </Link>
+        </>
+      }
+    >
+      <form onSubmit={form.handleSubmit(onSubmit)} noValidate className="flex flex-col gap-4">
         {serverError && (
-          <div className="flex items-start gap-2 rounded-md bg-red-50 border border-red-200 px-3 py-2 mb-1">
-            <span className="text-red-500 mt-0.5 shrink-0">✕</span>
-            <p className="text-sm text-red-700">{serverError}</p>
+          <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-3 py-2.5 text-sm text-red-700 dark:text-red-300">
+            {serverError}
           </div>
         )}
 
-        {/* email */}
-        <div className="flex flex-col gap-1">
+        <Field label="Email" htmlFor="login-email" error={errors.email?.message}>
           <input
+            id="login-email"
             {...form.register("email")}
-            placeholder="Email"
+            type="email"
+            placeholder="you@company.com"
             autoComplete="email"
-            className={`border rounded-md p-2 w-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-              errors.email ? "border-red-400 bg-red-50" : "border-gray-300"
-            }`}
+            className={`${inputClass} ${inputStateClass(!!errors.email)}`}
           />
-          {errors.email && (
-            <p className="text-xs text-red-600">{errors.email.message}</p>
-          )}
-        </div>
+        </Field>
 
-        {/* password */}
-        <div className="flex flex-col gap-1">
+        <Field label="Password" htmlFor="login-password" error={errors.password?.message}>
           <input
+            id="login-password"
             {...form.register("password")}
             type="password"
-            placeholder="Password"
+            placeholder="••••••••"
             autoComplete="current-password"
-            className={`border rounded-md p-2 w-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-              errors.password ? "border-red-400 bg-red-50" : "border-gray-300"
-            }`}
+            className={`${inputClass} ${inputStateClass(!!errors.password)}`}
           />
-          {errors.password && (
-            <p className="text-xs text-red-600">{errors.password.message}</p>
-          )}
-        </div>
+        </Field>
 
-        <Button type="submit" disabled={loading} className="w-full mt-3">
-          {loading ? "Logging in…" : "Login"}
-        </Button>
+        <button type="submit" disabled={loading} className={`${primaryButtonClass} w-full mt-2`}>
+          {loading ? "Logging in…" : "Log in"}
+        </button>
       </form>
-    </div>
+    </AuthLayout>
   );
 }

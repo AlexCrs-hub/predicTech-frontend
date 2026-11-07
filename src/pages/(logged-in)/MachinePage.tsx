@@ -2,7 +2,10 @@ import { fetchMachineById } from "@/lib/api/machineApi";
 import { useWebSocket } from "@/context/WebSocketContext";
 import { useNotifications } from "@/context/NotificationContext";
 import { useCallback, useEffect, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
+import { ArrowLeft, Download, Plus, Settings } from "lucide-react";
+import { useIsDark } from "@/lib/hooks/useIsDark";
+import { chartTheme } from "@/lib/utils/chartTheme";
 import { Machine } from "@/lib/components/machineList/types";
 import {
   ResponsiveContainer,
@@ -83,6 +86,10 @@ function buildShiftSegments(records: DowntimeRecord[], shiftStart: Date, now: Da
   return out;
 }
 
+const headerButtonClass =
+  "inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-input bg-background shadow-sm " +
+  "text-sm font-medium text-foreground hover:bg-accent transition-colors whitespace-nowrap";
+
 // ── shared primitives ─────────────────────────────────────────────────────────
 
 function Card({
@@ -94,7 +101,7 @@ function Card({
 }) {
   return (
     <div
-      className={`rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm p-5 ${className}`}
+      className={`rounded-xl border border-border bg-card shadow-sm p-5 ${className}`}
     >
       {children}
     </div>
@@ -103,7 +110,7 @@ function Card({
 
 function Label({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500 mb-4">
+    <p className="text-sm font-semibold text-foreground mb-4">
       {children}
     </p>
   );
@@ -112,11 +119,11 @@ function Label({ children }: { children: React.ReactNode }) {
 function BigNumber({ value, unit }: { value: React.ReactNode; unit?: string }) {
   return (
     <div className="flex items-end gap-1 leading-none">
-      <span className="text-5xl font-extrabold text-gray-900 dark:text-zinc-50">
+      <span className="text-5xl font-extrabold text-foreground">
         {value}
       </span>
       {unit && (
-        <span className="text-xl text-gray-400 dark:text-zinc-500 mb-0.5">
+        <span className="text-xl text-muted-foreground mb-0.5">
           {unit}
         </span>
       )}
@@ -139,12 +146,12 @@ function CreateTicketModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-zinc-700 w-full max-w-md mx-4 p-6 flex flex-col gap-4"
+        className="bg-card rounded-2xl shadow-2xl border border-border w-full max-w-md mx-4 p-6 flex flex-col gap-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div>
-          <h2 className="text-base font-bold text-gray-900 dark:text-zinc-50">Create Maintenance Ticket</h2>
-          <p className="text-xs text-gray-500 dark:text-zinc-400 mt-1">Machine: <span className="font-semibold">{machineName}</span></p>
+          <h2 className="text-base font-bold text-foreground">Create Maintenance Ticket</h2>
+          <p className="text-xs text-muted-foreground mt-1">Machine: <span className="font-semibold">{machineName}</span></p>
         </div>
         <textarea
           autoFocus
@@ -152,10 +159,10 @@ function CreateTicketModal({
           value={comment}
           onChange={(e) => setComment(e.target.value)}
           placeholder="Describe the issue or maintenance needed…"
-          className="text-sm rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 px-3 py-2 text-gray-800 dark:text-zinc-200 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+          className="text-sm rounded-lg border border-border bg-muted px-3 py-2 text-foreground placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
         />
         <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="text-sm px-4 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors">
+          <button onClick={onClose} className="text-sm px-4 py-2 rounded-lg border border-border text-muted-foreground hover:bg-accent transition-colors">
             Cancel
           </button>
           <button
@@ -188,9 +195,10 @@ function LivePowerChart({
   cuttingThreshold?: number;
   downtimeThreshold?: number;
 }) {
+  const ct = chartTheme(useIsDark());
   if (history.length < 2) {
     return (
-      <div className="flex items-center justify-center h-[140px] text-xs text-gray-400 dark:text-zinc-500">
+      <div className="flex items-center justify-center h-[140px] text-xs text-muted-foreground">
         Waiting for live data…
       </div>
     );
@@ -207,7 +215,7 @@ function LivePowerChart({
             <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}    />
           </linearGradient>
         </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" className="dark:[stroke:#27272a]" vertical={false} />
+        <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} vertical={false} />
         <XAxis
           dataKey="t"
           tick={{ fontSize: 9, fill: "#9ca3af" }}
@@ -225,7 +233,7 @@ function LivePowerChart({
         />
         <Tooltip
           formatter={(v: number) => [`${v.toFixed(2)} kW`, "Power"]}
-          contentStyle={{ fontSize: 11, borderRadius: 6, border: "1px solid #e5e7eb" }}
+          {...ct.tooltip}
           labelStyle={{ fontSize: 10 }}
         />
         {cuttingThreshold != null && (
@@ -286,10 +294,10 @@ function CuttingGauge({ value }: { value: number }) {
           <path d={arc} fill="none" stroke="#3b82f6" strokeWidth={sw} strokeLinecap="round" />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-end pb-0.5 pointer-events-none">
-          <span className="text-4xl font-extrabold text-gray-900 dark:text-zinc-50 leading-none">
+          <span className="text-4xl font-extrabold text-foreground leading-none">
             {value.toFixed(1)}
           </span>
-          <span className="text-sm text-gray-400 dark:text-zinc-500 font-medium">%</span>
+          <span className="text-sm text-muted-foreground font-medium">%</span>
         </div>
       </div>
     </div>
@@ -341,6 +349,7 @@ export default function MachinePage() {
   const [liveHistory, setLiveHistory] = useState<LivePoint[]>([]);
   const [ticketModal, setTicketModal] = useState(false);
   const { createTicket } = useNotifications();
+  const ct = chartTheme(useIsDark());
   const { search } = useLocation();
   const machineId = new URLSearchParams(search).get("machineId") || "";
 
@@ -351,7 +360,12 @@ export default function MachinePage() {
   const isRunning = isOnline && wsStatus === "on";
   const isIdle    = isOnline && wsStatus === "idle";
   const statusLabel = isRunning ? "Running" : isIdle ? "Idle" : "Offline";
-  const statusColor = isRunning ? "bg-green-500" : isIdle ? "bg-amber-400" : "bg-zinc-700";
+  const statusColor = isRunning ? "bg-green-500" : isIdle ? "bg-amber-400" : "bg-zinc-400";
+  const statusBadge = isRunning
+    ? "bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800"
+    : isIdle
+      ? "bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800"
+      : "bg-muted text-muted-foreground border-border";
 
   const livePower   = liveKw[machineId] || 0;
   const costPerHour = livePower * ENERGY_RATE;
@@ -506,7 +520,7 @@ export default function MachinePage() {
   };
 
   return (
-    <div className="w-full flex flex-col gap-0 pb-10 bg-gray-50 dark:bg-zinc-950 min-h-screen">
+    <div className="w-full flex flex-col gap-0 pb-10">
       {error && (
         <div className="text-red-500 dark:text-red-400 px-5 py-2 text-sm">
           {error}
@@ -514,43 +528,49 @@ export default function MachinePage() {
       )}
 
       {/* header */}
-      <div className="flex items-center gap-3 px-6 py-4 bg-blue-400 border-b border-gray-800">
-        <span
-          className={`w-2 h-2 rounded-full shrink-0 ${isRunning ? "bg-green-400" : isIdle ? "bg-amber-300" : "bg-zinc-500"}`}
-        />
-        <h1 className="text-base font-bold tracking-tight text-white flex-1">
-          {machine ? (
-            machine.name
-          ) : (
-            <span className="text-zinc-500 animate-pulse">Loading…</span>
-          )}
-        </h1>
-        <ReportDowntimeButton
-          machineId={machineId}
-          machineName={machine?.name ?? machineId}
-          count={pendingCount}
-          variant="header"
-          onReported={refreshDowntime}
-        />
-        <button
-          onClick={() => setTicketModal(true)}
-          className="text-xs px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white border border-white/30 transition-colors font-medium"
-        >
-          + Ticket
-        </button>
-        <button
-          onClick={handleExport}
-          className="text-xs px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white border border-white/30 transition-colors font-medium"
-        >
-          ↓ Export CSV
-        </button>
-        <span className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${statusColor}`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${isRunning ? "bg-green-200" : isIdle ? "bg-amber-200" : "bg-zinc-500"}`} />
-          <span className="text-white">{statusLabel}</span>
-        </span>
-        <span className="text-xs text-white/60 ml-1">
-          Morning Shift · 06:00–
-        </span>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3 px-4 sm:px-6 py-4 bg-background border-b">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <Link
+            to="/app"
+            aria-label="Back to machines"
+            className="w-8 h-8 shrink-0 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-accent transition-colors"
+          >
+            <ArrowLeft className="size-4" />
+          </Link>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-xl font-semibold tracking-tight text-foreground truncate">
+                {machine ? machine.name : <span className="text-muted-foreground animate-pulse">Loading…</span>}
+              </h1>
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${statusBadge}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${statusColor}`} />
+                {statusLabel}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Shift since {hhmm(shiftStart)}
+              {machine?.mqttName && machine.mqttName !== machine.name && <> · {machine.mqttName}</>}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <ReportDowntimeButton
+            machineId={machineId}
+            machineName={machine?.name ?? machineId}
+            count={pendingCount}
+            variant="header"
+            onReported={refreshDowntime}
+          />
+          <button onClick={() => setTicketModal(true)} className={headerButtonClass}>
+            <Plus className="size-4" /> Ticket
+          </button>
+          <button onClick={handleExport} className={headerButtonClass}>
+            <Download className="size-4" /> Export CSV
+          </button>
+          <Link to={`/app/update-machine?machineId=${machineId}`} className={headerButtonClass} title="Edit machine">
+            <Settings className="size-4" /> <span className="sr-only sm:not-sr-only">Edit</span>
+          </Link>
+        </div>
       </div>
 
       {/* grid */}
@@ -565,7 +585,7 @@ export default function MachinePage() {
           <Card>
             <Label>Cycles</Label>
             <BigNumber value={metrics.cycles ?? "—"} unit="cycles" />
-            <p className="text-xs text-gray-400 dark:text-zinc-500 text-right mt-2">
+            <p className="text-xs text-muted-foreground text-right mt-2">
               in {dtPeriod.label}
             </p>
           </Card>
@@ -573,7 +593,7 @@ export default function MachinePage() {
           <Card>
             <Label>Cycle Time</Label>
             <BigNumber value={cycleTimeS ?? "—"} unit={cycleTimeS !== null ? "s" : undefined} />
-            <p className="text-xs text-gray-400 dark:text-zinc-500 font-medium mt-2">
+            <p className="text-xs text-muted-foreground font-medium mt-2">
               {metrics.cuttingHours != null
                 ? `${metrics.cuttingHours.toFixed(1)} h cutting · ${metrics.cycles ?? "—"} cycles`
                 : "No data for period"}
@@ -583,15 +603,15 @@ export default function MachinePage() {
           <Card>
             <div className="flex items-center justify-between mb-4">
               <Label>Energy Cost</Label>
-              <div className="flex rounded-md border border-gray-200 dark:border-zinc-700 overflow-hidden">
+              <div className="inline-flex items-center rounded-lg bg-muted p-1 gap-0.5">
                 {COST_PERIODS.map((p) => (
                   <button
                     key={p.label}
                     onClick={() => setCostPeriod(p)}
                     className={`px-2.5 py-0.5 text-[10px] transition-colors ${
                       costPeriod.label === p.label
-                        ? "bg-gray-900 dark:bg-zinc-100 text-white dark:text-zinc-900 font-semibold"
-                        : "bg-white dark:bg-zinc-900 text-gray-500 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800"
+                        ? "rounded-md bg-background text-foreground shadow-sm font-semibold"
+                        : "rounded-md text-muted-foreground hover:text-foreground"
                     }`}
                   >
                     {p.label}
@@ -607,9 +627,9 @@ export default function MachinePage() {
                 { label: "Cost / h",   value: costPerHour > 0 ? `€${costPerHour.toFixed(2)}` : "€—",  color: "text-emerald-600 dark:text-emerald-400" },
                 { label: "Daily est.", value: costPerDay > 0  ? `€${costPerDay.toFixed(0)}`  : "€—",  color: "text-emerald-600 dark:text-emerald-400" },
               ].map(({ label, value, color }) => (
-                <div key={label} className="flex flex-col items-center rounded-lg bg-gray-50 dark:bg-zinc-800/60 py-2.5 px-1">
+                <div key={label} className="flex flex-col items-center rounded-lg bg-muted/60 py-2.5 px-1">
                   <span className={`text-sm font-extrabold leading-none ${color}`}>{value}</span>
-                  <span className="text-[10px] text-gray-400 dark:text-zinc-500 mt-1 uppercase tracking-wide text-center">{label}</span>
+                  <span className="text-[11px] text-muted-foreground mt-1 text-center">{label}</span>
                 </div>
               ))}
             </div>
@@ -619,7 +639,7 @@ export default function MachinePage() {
               <LineChart data={costTrend} margin={{ top: 2, right: 4, bottom: 0, left: 0 }}>
                 <Tooltip
                   formatter={(v: number) => [`€${v.toFixed(2)}`, "Cost"]}
-                  contentStyle={{ fontSize: 11, borderRadius: 6, border: "1px solid #e5e7eb" }}
+                  {...ct.tooltip}
                 />
                 <Line
                   type="monotone"
@@ -632,7 +652,7 @@ export default function MachinePage() {
                 />
               </LineChart>
             </ResponsiveContainer>
-            <p className="text-[10px] text-gray-400 dark:text-zinc-500 text-right mt-1">
+            <p className="text-[10px] text-muted-foreground text-right mt-1">
               Total {costPeriod.label}: €{costTrend.reduce((s, d) => s + d.cost, 0).toFixed(2)}
             </p>
           </Card>
@@ -659,7 +679,7 @@ export default function MachinePage() {
           {/* production timeline — current shift, real downtime records */}
           <Card>
             <Label>Production Timeline</Label>
-            <div className="flex h-7 rounded-lg overflow-hidden gap-px bg-gray-100 dark:bg-zinc-800">
+            <div className="flex h-7 rounded-lg overflow-hidden gap-px bg-muted">
               {shiftSegments.map((seg, i) =>
                 seg.kind === "running" ? (
                   <div
@@ -680,7 +700,7 @@ export default function MachinePage() {
             </div>
 
             {/* hint below bar */}
-            <p className="text-[10px] text-gray-400 dark:text-zinc-600 mt-1.5">
+            <p className="text-[10px] text-muted-foreground/70 mt-1.5">
               {shiftDowntimes.length === 0
                 ? "No downtime this shift."
                 : "Downtime segments are clickable — report or edit the reason."}
@@ -695,7 +715,7 @@ export default function MachinePage() {
                 ].map(({ label, color }) => (
                   <span
                     key={label}
-                    className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-zinc-400"
+                    className="flex items-center gap-1.5 text-xs text-muted-foreground"
                   >
                     <span
                       className="w-2 h-2 rounded-full"
@@ -705,7 +725,7 @@ export default function MachinePage() {
                   </span>
                 ))}
               </div>
-              <span className="text-xs text-gray-400 dark:text-zinc-500 shrink-0">
+              <span className="text-xs text-muted-foreground shrink-0">
                 {hhmm(shiftStart)} – now
               </span>
             </div>
@@ -715,15 +735,15 @@ export default function MachinePage() {
           <Card>
             <div className="flex items-center justify-between mb-3">
               <Label>Top Downtime Causes</Label>
-              <div className="flex rounded-md border border-gray-200 dark:border-zinc-700 overflow-hidden">
+              <div className="inline-flex items-center rounded-lg bg-muted p-1 gap-0.5">
                 {DT_PERIODS.map((p) => (
                   <button
                     key={p.label}
                     onClick={() => setDtPeriod(p)}
                     className={`px-2.5 py-0.5 text-[10px] transition-colors ${
                       dtPeriod.label === p.label
-                        ? "bg-gray-900 dark:bg-zinc-100 text-white dark:text-zinc-900 font-semibold"
-                        : "bg-white dark:bg-zinc-900 text-gray-500 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800"
+                        ? "rounded-md bg-background text-foreground shadow-sm font-semibold"
+                        : "rounded-md text-muted-foreground hover:text-foreground"
                     }`}
                   >
                     {p.label}
@@ -736,11 +756,11 @@ export default function MachinePage() {
               value={dtFilter}
               onChange={(e) => setDtFilter(e.target.value)}
               placeholder="Filter causes…"
-              className="w-full text-xs rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 px-2.5 py-1.5 mb-3 text-gray-800 dark:text-zinc-200 placeholder:text-gray-400 dark:placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full text-xs rounded-lg border border-border bg-muted px-2.5 py-1.5 mb-3 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
             <div className="flex flex-col gap-3">
               {downtimeCauses.length === 0 ? (
-                <p className="text-xs text-gray-400 dark:text-zinc-500">
+                <p className="text-xs text-muted-foreground">
                   No downtime data for this period.
                 </p>
               ) : (
@@ -748,19 +768,19 @@ export default function MachinePage() {
                   .filter((c) => c.label.toLowerCase().includes(dtFilter.toLowerCase()))
                   .map(({ key, label, color, ms, count, pct }) => (
                     <div key={key} className="flex items-center gap-3" title={`${count} event${count !== 1 ? "s" : ""}`}>
-                      <span className="w-28 text-sm text-gray-600 dark:text-zinc-400 shrink-0">
+                      <span className="w-28 text-sm text-muted-foreground shrink-0">
                         {label}
                       </span>
-                      <div className="flex-1 h-4 rounded-full bg-gray-100 dark:bg-zinc-800 overflow-hidden">
+                      <div className="flex-1 h-4 rounded-full bg-muted overflow-hidden">
                         <div
                           className="h-full rounded-full transition-all duration-300"
                           style={{ width: `${pct}%`, backgroundColor: color }}
                         />
                       </div>
-                      <span className="text-sm font-semibold text-gray-800 dark:text-zinc-200 w-16 text-right shrink-0 tabular-nums">
+                      <span className="text-sm font-semibold text-foreground w-16 text-right shrink-0 tabular-nums">
                         {formatDuration(ms)}
                       </span>
-                      <span className="text-xs text-gray-400 dark:text-zinc-500 w-8 text-right shrink-0 tabular-nums">
+                      <span className="text-xs text-muted-foreground w-8 text-right shrink-0 tabular-nums">
                         {pct}%
                       </span>
                     </div>

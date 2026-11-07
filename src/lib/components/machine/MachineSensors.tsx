@@ -49,7 +49,7 @@ const SensorChart = memo(function SensorChart({ sensor }: { sensor: Sensor }) {
   );
 
   if (!data.length)
-    return <p className="text-xs text-gray-400 dark:text-zinc-500">No readings available.</p>;
+    return <p className="text-xs text-muted-foreground">No readings available.</p>;
 
   return (
     <ResponsiveContainer width="100%" height={220}>
@@ -196,9 +196,9 @@ export default function MachineSensors(props: {
       {sensorsWithData.map((sensor: Sensor) => (
         <div
           key={sensor._id}
-          className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm p-5"
+          className="rounded-xl border border-border bg-card shadow-sm p-5"
         >
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500 mb-3">
+          <p className="text-sm font-semibold text-foreground mb-3">
             {sensor.name}{" "}
             <span className="normal-case font-normal tracking-normal">
               ({sensor.unit})

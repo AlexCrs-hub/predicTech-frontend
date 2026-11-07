@@ -70,16 +70,16 @@ function GroupCard({ group }: { group: typeof GROUPS[number] }) {
   return (
     <div className={`rounded-xl border p-5 flex flex-col gap-4 ${group.color}`}>
       <div>
-        <h3 className="text-base font-bold text-gray-900 dark:text-zinc-50">{group.label}</h3>
-        <p className="text-xs text-gray-500 dark:text-zinc-400 mt-0.5">{group.description}</p>
-        <span className="inline-block mt-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">
+        <h3 className="text-base font-bold text-foreground">{group.label}</h3>
+        <p className="text-xs text-muted-foreground mt-0.5">{group.description}</p>
+        <span className="inline-block mt-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
           {group.escalation}
         </span>
       </div>
 
       {/* Add number */}
       <div className="flex flex-col gap-1.5">
-        <label className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">
+        <label className="text-xs font-medium text-muted-foreground">
           Add phone number
         </label>
         <div className="flex gap-2">
@@ -88,12 +88,12 @@ function GroupCard({ group }: { group: typeof GROUPS[number] }) {
             value={addPhone}
             onChange={(e) => { setAddPhone(e.target.value); setAddState("idle"); }}
             placeholder="+48123456789"
-            className="flex-1 text-sm rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-1.5 text-gray-800 dark:text-zinc-200 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="flex-1 min-w-0 text-sm rounded-lg border border-border bg-card px-3 py-1.5 text-foreground placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
           <button
             onClick={doAdd}
             disabled={!addPhone.trim() || addState === "saving"}
-            className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="shrink-0 whitespace-nowrap px-3 py-1.5 text-sm font-semibold rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             {addState === "saving" ? "…" : "+ Add"}
           </button>
@@ -104,7 +104,7 @@ function GroupCard({ group }: { group: typeof GROUPS[number] }) {
 
       {/* Remove number */}
       <div className="flex flex-col gap-1.5">
-        <label className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">
+        <label className="text-xs font-medium text-muted-foreground">
           Remove phone number
         </label>
         <div className="flex gap-2">
@@ -113,12 +113,12 @@ function GroupCard({ group }: { group: typeof GROUPS[number] }) {
             value={removePhone}
             onChange={(e) => { setRemovePhone(e.target.value); setRemoveState("idle"); }}
             placeholder="+48123456789"
-            className="flex-1 text-sm rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-1.5 text-gray-800 dark:text-zinc-200 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="flex-1 min-w-0 text-sm rounded-lg border border-border bg-card px-3 py-1.5 text-foreground placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
           <button
             onClick={doRemove}
             disabled={!removePhone.trim() || removeState === "saving"}
-            className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-red-500 text-white hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="shrink-0 whitespace-nowrap px-3 py-1.5 text-sm font-semibold rounded-lg bg-red-500 text-white hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             {removeState === "saving" ? "…" : "− Remove"}
           </button>
@@ -156,15 +156,15 @@ export default function NotificationGroupsPage() {
   return (
     <div className="w-full max-w-4xl mx-auto p-6 flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-zinc-50">Notification Groups</h1>
-        <p className="text-sm text-gray-500 dark:text-zinc-400 mt-1">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Notification Groups</h1>
+        <p className="text-sm text-muted-foreground mt-1">
           Manage WhatsApp phone numbers for each notification group. Numbers receive downtime alerts based on the escalation schedule.
         </p>
       </div>
 
       {/* Escalation flow diagram */}
-      <div className="flex items-center gap-2 flex-wrap text-xs text-gray-500 dark:text-zinc-400 rounded-xl border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-4 py-3">
-        <span className="font-semibold text-gray-700 dark:text-zinc-300">Escalation flow:</span>
+      <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground rounded-xl border border-border bg-card px-4 py-3">
+        <span className="font-semibold text-foreground/80">Escalation flow:</span>
         <span className="px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-medium">Operator</span>
         <span>→ immediately</span>
         <span className="mx-1">→</span>
@@ -179,7 +179,7 @@ export default function NotificationGroupsPage() {
         {GROUPS.map((g) => <GroupCard key={g.name} group={g} />)}
       </div>
 
-      <p className="text-xs text-gray-400 dark:text-zinc-500">
+      <p className="text-xs text-muted-foreground">
         Phone numbers must include country code, e.g. <code className="font-mono">+48123456789</code>. Notifications stop automatically when an operator logs a downtime reason.
       </p>
     </div>

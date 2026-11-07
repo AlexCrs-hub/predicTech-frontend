@@ -1,153 +1,107 @@
-"use client";
-
-import { zodResolver } from "@hookform/resolvers/zod";
+import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { toast } from "@/lib/hooks/use-toast";
-import { Button } from "@/lib/components/ui/button";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/lib/components/ui/form";
-import { Input } from "@/lib/components/ui/input";
-import { Toaster } from "../ui/toaster";
-import { useEffect, useState } from "react";
-import { fetchUserLines } from "@/lib/api/lineApi";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Check } from "lucide-react";
 import { addMachine } from "@/lib/api/machineApi";
 import { useAuth } from "@/context/AuthContext";
-
+import { Field } from "@/lib/components/ui/field";
+import { inputClass, inputStateClass, primaryButtonClass } from "@/lib/components/ui/fieldStyles";
 
 const FormSchema = z.object({
-  machine_name: z
-    .string()
-    .min(2, { message: "Machine name must be at least 2 characters." }),
-  max_power: z
-    .coerce.number()
-    .min(1, { message: "Max power consumption must be at least 1 KW." }),
+  machine_name: z.string().trim().min(2, { message: "Machine name must be at least 2 characters." }),
+  mqtt_name: z.string().trim().optional(),
+  max_power: z.coerce.number({ invalid_type_error: "Enter a number." }).min(1, { message: "Max power must be at least 1 kW." }),
 });
 
+type FormValues = z.infer<typeof FormSchema>;
+
 export default function MachineInputForm() {
-
-  const [loading, setLoading] = useState(false);
-  const [machineName, setMachineName] = useState(""); // stan dla machine_name;
-  const [maxPowerConsumption, setMaxPowerConsumption] = useState(0);
   const userId = useAuth().getUser()?.user._id || "";
+  const [serverError, setServerError] = useState("");
+  const [created, setCreated] = useState<{ _id: string; name: string } | null>(null);
 
-  const form = useForm<z.infer<typeof FormSchema>>({
+  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(FormSchema),
-    defaultValues: {
-      machine_name: "",
-      max_power: 0,
-    },
+    defaultValues: { machine_name: "", mqtt_name: "", max_power: undefined },
   });
 
-  async function onSubmit(data: z.infer<typeof FormSchema>) {
-    console.log(
-      "Final payload:",
-      JSON.stringify({ machine_name: data.machine_name, max_power: data.max_power })
-    );
-
+  async function onSubmit(data: FormValues) {
+    setServerError("");
+    setCreated(null);
     try {
-      setLoading(true);
-      const response = await addMachine(
-        data.machine_name,
-        data.max_power,
-        userId
-      );
-
-      console.log(
-        "Sending request to:",
-        `https://localhost:8081/api/machines`
-      );
-      console.log(
-        "Request body:",
-        JSON.stringify({ machine_name: data.machine_name, max_power: data.max_power })
-      );
-
-      if (!response.message)
-      {
-        setLoading(false);  
-        throw new Error(response.error || "Failed to add machine.");
-      }
-
-      toast({
-        title: "Success",
-        description: "Machine has been added successfully!",
-      });
-
-      form.reset();
-    } catch (error) {
-      setLoading(false);  
-      console.error("Fetch error: ", error);
-      toast({
-        title: "Error",
-        description: "Something went wrong.",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
+      const response = await addMachine(data.machine_name, data.max_power, userId, data.mqtt_name || undefined);
+      if (!response?.message) throw new Error(response?.error || "Failed to add machine.");
+      setCreated(response.machine ?? { _id: "", name: data.machine_name });
+      reset();
+    } catch (err) {
+      setServerError(err instanceof Error ? err.message : "Something went wrong.");
     }
   }
 
   return (
-    <Form {...form}>
-      <form
-        onSubmit={form.handleSubmit(onSubmit)}
-        className="w-2/3 space-y-6 flex flex-col items-center"
+    <form onSubmit={handleSubmit(onSubmit)} noValidate className="flex flex-col gap-5">
+      {created && (
+        <div className="flex items-start gap-2 rounded-lg border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 px-3 py-2.5 text-sm text-green-800 dark:text-green-300">
+          <Check className="size-4 mt-0.5 shrink-0" />
+          <span>
+            <strong>{created.name}</strong> was added.{" "}
+            {created._id && (
+              <Link to={`/app/update-machine?machineId=${created._id}`} className="underline font-medium">
+                Set its thresholds →
+              </Link>
+            )}
+          </span>
+        </div>
+      )}
+      {serverError && (
+        <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-3 py-2.5 text-sm text-red-700 dark:text-red-300">
+          {serverError}
+        </div>
+      )}
+
+      <Field label="Display name" htmlFor="add-name" required error={errors.machine_name?.message}>
+        <input
+          id="add-name"
+          {...register("machine_name")}
+          placeholder="e.g. CNC 1"
+          className={`${inputClass} ${inputStateClass(!!errors.machine_name)}`}
+        />
+      </Field>
+
+      <Field
+        label="Hardware ID (MQTT name)"
+        htmlFor="add-mqtt"
+        error={errors.mqtt_name?.message}
+        hint="The machine name sent in MQTT messages. Leave empty to use the display name."
       >
-        <FormField
-          control={form.control}
-          name="machine_name"
-          render={({ field }) => (
-            <FormItem className="w-full">
-              <FormLabel>Machine Name</FormLabel>
-              <FormControl>
-                <Input
-                  placeholder="Enter machine name"
-                  {...field}
-                  value={machineName}
-                  onChange={(e) => {
-                    setMachineName(e.target.value);
-                    field.onChange(e.target.value);
-                  }}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
+        <input
+          id="add-mqtt"
+          {...register("mqtt_name")}
+          placeholder="e.g. Machine_Pipe_7"
+          className={`${inputClass} ${inputStateClass(!!errors.mqtt_name)}`}
         />
+      </Field>
 
-        <FormField
-          control={form.control}
-          name="max_power"
-          render={({ field }) => (
-            <FormItem className="w-full">
-              <FormLabel>Max Power Consumption (KW)</FormLabel>
-              <FormControl>
-                <Input
-                  placeholder="Enter max power consumption"
-                  {...field}
-                  value={maxPowerConsumption}
-                  onChange={(e) => {
-                    setMaxPowerConsumption(Number(e.target.value));
-                    field.onChange(e.target.value);
-                  }}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
+      <Field label="Max power consumption (kW)" htmlFor="add-max" required error={errors.max_power?.message}>
+        <input
+          id="add-max"
+          type="number"
+          inputMode="decimal"
+          min={1}
+          step="0.1"
+          {...register("max_power")}
+          placeholder="e.g. 12"
+          className={`${inputClass} ${inputStateClass(!!errors.max_power)}`}
         />
+      </Field>
 
-        <Button type="submit" disabled={loading}>
-          Add Machine
-        </Button>
-      </form>
-      <Toaster />
-    </Form>
+      <div className="flex justify-end pt-1">
+        <button type="submit" disabled={isSubmitting} className={primaryButtonClass}>
+          {isSubmitting ? "Adding…" : "Add machine"}
+        </button>
+      </div>
+    </form>
   );
 }

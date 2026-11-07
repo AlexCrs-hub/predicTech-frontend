@@ -5,14 +5,14 @@ import DowntimeReportModal from "./DowntimeReportModal";
 
 const VARIANT_CLASS = {
   card: {
-    enabled:  "border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40",
-    disabled: "border-gray-200 dark:border-zinc-700 text-gray-400 dark:text-zinc-600 bg-transparent cursor-not-allowed",
-    base:     "flex-1 flex items-center justify-center gap-1 whitespace-nowrap text-[11px] font-semibold px-2 py-1.5 rounded-lg border transition-colors",
+    enabled:  "border-red-500/30 text-red-600 dark:text-red-400 bg-red-500/5 hover:bg-red-500/10",
+    disabled: "border-input text-muted-foreground/70 bg-background cursor-not-allowed",
+    base:     "flex-1 flex items-center justify-center gap-1.5 whitespace-nowrap h-8 px-2 rounded-lg border text-xs font-medium shadow-sm transition-colors",
   },
   header: {
-    enabled:  "bg-red-500 hover:bg-red-600 text-white border-red-300",
-    disabled: "bg-white/10 text-white/50 border-white/20 cursor-not-allowed",
-    base:     "flex items-center gap-1.5 whitespace-nowrap text-xs px-3 py-1.5 rounded-lg border transition-colors font-medium",
+    enabled:  "bg-red-600 hover:bg-red-700 text-white border-red-600",
+    disabled: "bg-background text-muted-foreground/70 border-input cursor-not-allowed shadow-sm",
+    base:     "inline-flex items-center gap-1.5 whitespace-nowrap h-9 px-3 text-sm rounded-lg border transition-colors font-medium",
   },
 } as const;
 
@@ -69,7 +69,7 @@ export default function ReportDowntimeButton({
           <>
             Report downtime
             {enabled && (
-              <span className="min-w-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] leading-[16px] tabular-nums">
+              <span className={`min-w-[18px] px-1 rounded-full text-[10px] leading-[16px] tabular-nums ${variant === "header" ? "bg-white text-red-600" : "bg-red-500 text-white"}`}>
                 {count}
               </span>
             )}

@@ -8,9 +8,9 @@ import NotFound from "./pages/NotFoundPage";
 function RouteErrorBoundary() {
   const error = useRouteError() as Error;
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen gap-4 p-8 bg-gray-50 dark:bg-zinc-950">
+    <div className="flex flex-col items-center justify-center min-h-screen gap-4 p-8 bg-background">
       <h1 className="text-xl font-bold text-red-600 dark:text-red-400">Something went wrong</h1>
-      <p className="text-sm text-gray-500 dark:text-zinc-400 max-w-md text-center">{error?.message ?? "Unknown error"}</p>
+      <p className="text-sm text-muted-foreground max-w-md text-center">{error?.message ?? "Unknown error"}</p>
       <a href={window.location.pathname.startsWith("/demo") ? "/demo/app" : "/app"} className="text-sm text-blue-600 dark:text-blue-400 underline">← Back to machines</a>
     </div>
   );
@@ -36,6 +36,9 @@ import { NotificationProvider } from "./context/NotificationContext";
 import { IS_DEMO } from "./demo/config";
 import { installDemoFetch } from "./demo/fetchInterceptor";
 import { DemoWebSocketProvider } from "./demo/DemoWebSocketProvider";
+
+// Apply the saved theme before the first render (auth pages have no theme toggle)
+if (localStorage.getItem("theme") === "dark") document.documentElement.classList.add("dark");
 
 // ── Demo mode bootstrap ────────────────────────────────────────────────────────
 if (IS_DEMO) {
@@ -155,6 +158,7 @@ const ROUTES = [
       { path: "/app", element: <ActiveMachineList /> },
       { path: "/app/active-machines", element: <ActiveMachineList /> },
       { path: "/app/add-machine", element: <AddMachinePage /> },
+      { path: "/app/update-machine", element: <UpdateMachinePage /> },
       { path: "/app/report", element: <AddReportPage /> },
       { path: "/app/reports", element: <ReportsPage /> },
       { path: "/app/overview", element: <OverviewPage /> },

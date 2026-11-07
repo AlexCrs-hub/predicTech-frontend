@@ -16,6 +16,8 @@ import {
   ResponsiveContainer, Cell, LineChart, Line,
 } from "recharts";
 import { Download } from "lucide-react";
+import { useIsDark } from "@/lib/hooks/useIsDark";
+import { chartTheme } from "@/lib/utils/chartTheme";
 
 // ── Period options ────────────────────────────────────────────────────────────
 const PERIODS = [
@@ -130,7 +132,7 @@ const STATUS_LABEL: Record<ReportStatus, string> = {
 };
 
 const STATUS_BADGE: Record<ReportStatus, string> = {
-  new:             "bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-zinc-400 border-gray-300 dark:border-zinc-600",
+  new:             "bg-muted text-muted-foreground border-gray-300 dark:border-zinc-600",
   in_progress:     "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border-blue-300 dark:border-blue-700",
   needs_more_time: "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 border-orange-300 dark:border-orange-700",
   fixed:           "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-300 dark:border-green-700",
@@ -146,17 +148,17 @@ const BORDER_ACCENT: Record<ReportStatus, string> = {
 function CompactReportCard({ report }: { report: Report }) {
   return (
     <Link to="/app/reports">
-      <div className={`rounded-md border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm overflow-hidden hover:shadow-md transition-shadow flex border-l-4 ${BORDER_ACCENT[report.status]}`}>
+      <div className={`rounded-md border border-border bg-card shadow-sm overflow-hidden hover:shadow-md transition-shadow flex border-l-4 ${BORDER_ACCENT[report.status]}`}>
         <div className="flex flex-col px-3 py-2 flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2">
-            <span className="font-semibold text-sm text-gray-900 dark:text-zinc-100 truncate">
+            <span className="font-semibold text-sm text-foreground truncate">
               {report.sensorName} — {report.machineName}
             </span>
             <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border shrink-0 ${STATUS_BADGE[report.status]}`}>
               {STATUS_LABEL[report.status]}
             </span>
           </div>
-          <span className="text-xs text-gray-500 dark:text-zinc-500 mt-0.5 truncate">{report.comment}</span>
+          <span className="text-xs text-muted-foreground mt-0.5 truncate">{report.comment}</span>
         </div>
       </div>
     </Link>
@@ -165,7 +167,7 @@ function CompactReportCard({ report }: { report: Report }) {
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
-    <h2 className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">
+    <h2 className="text-sm font-semibold text-foreground">
       {children}
     </h2>
   );
@@ -175,7 +177,7 @@ function ExportBtn({ onClick }: { onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="flex items-center gap-1 text-xs text-gray-400 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors px-2 py-1 rounded border border-gray-200 dark:border-zinc-700 hover:border-blue-300 dark:hover:border-blue-700"
+      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-blue-600 dark:hover:text-blue-400 transition-colors px-2 py-1 rounded border border-border hover:border-blue-300 dark:hover:border-blue-700"
     >
       <Download className="size-3" />
       Export
@@ -188,14 +190,14 @@ function KpiTile({
   label, value, sub, accent,
 }: { label: string; value: string; sub?: string; accent?: string }) {
   return (
-    <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm px-5 py-4 flex flex-col gap-1">
-      <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">
+    <div className="rounded-xl border bg-card shadow-sm p-5 flex flex-col gap-1.5">
+      <span className="text-sm font-medium text-muted-foreground">
         {label}
       </span>
-      <span className={`text-2xl font-extrabold leading-none ${accent ?? "text-gray-900 dark:text-zinc-50"}`}>
+      <span className={`text-2xl font-bold tracking-tight leading-none tabular-nums ${accent ?? "text-foreground"}`}>
         {value}
       </span>
-      {sub && <span className="text-xs text-gray-400 dark:text-zinc-500">{sub}</span>}
+      {sub && <span className="text-xs text-muted-foreground">{sub}</span>}
     </div>
   );
 }
@@ -240,6 +242,7 @@ export default function OverviewPage() {
   const [dtStatus, setDtStatus] = useState<"loading" | "ok" | "error">("loading");
   const { reports } = useNotifications();
   const { liveKw } = useWebSocket();
+  const ct = chartTheme(useIsDark());
 
   useEffect(() => {
     fetchAllMachines()
@@ -431,18 +434,18 @@ export default function OverviewPage() {
   })();
 
   return (
-    <div className="w-full p-6 flex flex-col gap-6 bg-gray-50 dark:bg-zinc-950 min-h-screen">
+    <div className="w-full max-w-screen-2xl mx-auto p-4 sm:p-6 flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-zinc-50">Overview</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Overview</h1>
         <div className="flex items-center gap-3">
-          <div className="flex rounded-md border border-gray-200 dark:border-zinc-700 overflow-hidden">
+          <div className="inline-flex items-center rounded-lg bg-muted p-1 gap-0.5">
             {PERIODS.map((p) => (
               <button
                 key={p.label}
                 className={`px-3 py-1.5 text-sm transition-colors ${
                   period.label === p.label
-                    ? "bg-gray-900 dark:bg-zinc-100 text-white dark:text-zinc-900 font-medium"
-                    : "bg-white dark:bg-zinc-900 text-gray-600 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800"
+                    ? "rounded-md bg-background text-foreground shadow-sm font-medium"
+                    : "rounded-md text-muted-foreground hover:text-foreground"
                 }`}
                 onClick={() => setPeriod(p)}
               >
@@ -458,7 +461,7 @@ export default function OverviewPage() {
 
       {/* ── status banners ── */}
       {machineStatus === "loading" && (
-        <p className="text-sm text-gray-400 dark:text-zinc-500 animate-pulse">Loading machines…</p>
+        <p className="text-sm text-muted-foreground animate-pulse">Loading machines…</p>
       )}
       {machineStatus === "auth" && (
         <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-5 py-3 text-sm text-amber-700 dark:text-amber-400">
@@ -471,7 +474,7 @@ export default function OverviewPage() {
         </div>
       )}
       {machineStatus === "empty" && (
-        <div className="rounded-xl border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-5 py-3 text-sm text-gray-500 dark:text-zinc-400">
+        <div className="rounded-xl border border-border bg-card px-5 py-3 text-sm text-muted-foreground">
           No machines found for this account. Add a machine to start seeing data.
         </div>
       )}
@@ -515,7 +518,7 @@ export default function OverviewPage() {
               <div className="flex items-center gap-2 flex-wrap">
                 <ExportBtn onClick={exportTimeBreakdown} />
                 <select
-                  className="text-sm border border-gray-200 dark:border-zinc-700 rounded-md px-2 py-1 bg-white dark:bg-zinc-900 text-gray-700 dark:text-zinc-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="text-sm border border-border rounded-md px-2 py-1 bg-card text-foreground/80 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   value={selectedMachine}
                   onChange={(e) => setSelectedMachine(e.target.value)}
                 >
@@ -526,10 +529,10 @@ export default function OverviewPage() {
                 </select>
               </div>
             </div>
-            <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm p-4">
+            <div className="rounded-xl border border-border bg-card shadow-sm p-4">
               <ResponsiveContainer width="100%" height={240}>
                 <BarChart data={chartData} barCategoryGap="30%">
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={ct.grid} />
                   <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
                   <YAxis
                     tick={{ fontSize: 11, fill: "#9ca3af" }}
@@ -540,8 +543,8 @@ export default function OverviewPage() {
                   />
                   <Tooltip
                     formatter={(value: number) => [`${value} h`, "Hours"]}
-                    contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e5e7eb" }}
-                    cursor={{ fill: "#f9fafb" }}
+                    {...ct.tooltip}
+                    cursor={{ fill: ct.cursorFill }}
                   />
                   <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                     {chartData.map((entry) => (
@@ -561,9 +564,9 @@ export default function OverviewPage() {
                 <SectionHeading>Utilization leaderboard</SectionHeading>
                 <ExportBtn onClick={exportLeaderboard} />
               </div>
-              <div className="rounded-xl border border-gray-200 dark:border-zinc-800 overflow-hidden shadow-sm">
+              <div className="rounded-xl border border-border overflow-hidden shadow-sm">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50 dark:bg-zinc-800 text-xs text-gray-500 dark:text-zinc-400 uppercase">
+                  <thead className="bg-muted/50 text-xs font-medium text-muted-foreground">
                     <tr>
                       <th className="px-3 py-2 text-left w-8">#</th>
                       <th className="px-3 py-2 text-left">Machine</th>
@@ -572,11 +575,11 @@ export default function OverviewPage() {
                       <th className="px-3 py-2 text-right">Cycles</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100 dark:divide-zinc-800 bg-white dark:bg-zinc-900">
+                  <tbody className="divide-y divide-border bg-card">
                     {leaderboard.map((m, i) => (
-                      <tr key={m._id} className="hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors">
-                        <td className="px-3 py-2 text-gray-400 dark:text-zinc-600 font-mono">{i + 1}</td>
-                        <td className="px-3 py-2 text-gray-900 dark:text-zinc-100">
+                      <tr key={m._id} className="hover:bg-accent transition-colors">
+                        <td className="px-3 py-2 text-muted-foreground/70 font-mono">{i + 1}</td>
+                        <td className="px-3 py-2 text-foreground">
                           <Link to={`/app/machine?machineId=${m._id}`} className="font-medium hover:text-blue-600 dark:hover:text-blue-400">
                             {m.name}
                           </Link>
@@ -586,11 +589,11 @@ export default function OverviewPage() {
                             <div className="w-16 h-1.5 rounded-full bg-gray-100 dark:bg-zinc-700 overflow-hidden">
                               <div className="h-full bg-green-500 rounded-full" style={{ width: `${m.utilPct}%` }} />
                             </div>
-                            <span className="font-semibold tabular-nums text-gray-900 dark:text-zinc-100">{m.utilPct.toFixed(1)}%</span>
+                            <span className="font-semibold tabular-nums text-foreground">{m.utilPct.toFixed(1)}%</span>
                           </div>
                         </td>
-                        <td className="px-3 py-2 text-right text-gray-600 dark:text-zinc-400 tabular-nums">{m.cuttingPct.toFixed(1)}%</td>
-                        <td className="px-3 py-2 text-right font-semibold tabular-nums text-gray-900 dark:text-zinc-100">{m.cycles}</td>
+                        <td className="px-3 py-2 text-right text-muted-foreground tabular-nums">{m.cuttingPct.toFixed(1)}%</td>
+                        <td className="px-3 py-2 text-right font-semibold tabular-nums text-foreground">{m.cycles}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -615,33 +618,33 @@ export default function OverviewPage() {
               value={dtFilter}
               onChange={(e) => setDtFilter(e.target.value)}
               placeholder="Filter causes…"
-              className="text-sm rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-1.5 text-gray-800 dark:text-zinc-200 placeholder:text-gray-400 dark:placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="text-sm rounded-lg border border-border bg-card px-3 py-1.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
-            <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm p-5">
+            <div className="rounded-xl border border-border bg-card shadow-sm p-5">
               <div className="flex flex-col gap-3">
                 {dtStatus === "loading" && downtimeCauses.length === 0 && (
-                  <p className="text-sm text-gray-400 dark:text-zinc-500 animate-pulse">Loading downtime…</p>
+                  <p className="text-sm text-muted-foreground animate-pulse">Loading downtime…</p>
                 )}
                 {dtStatus === "error" && (
                   <p className="text-sm text-red-500">Could not load downtime data.</p>
                 )}
                 {dtStatus === "ok" && downtimeCauses.length === 0 && (
-                  <p className="text-sm text-gray-400 dark:text-zinc-500">No downtime in this period.</p>
+                  <p className="text-sm text-muted-foreground">No downtime in this period.</p>
                 )}
                 {downtimeCauses.filter((c) => c.name.toLowerCase().includes(dtFilter.toLowerCase())).map(({ key, name, ms, count, pct, color }) => {
                   return (
                     <div key={key} className="flex items-center gap-3" title={`${count} event${count !== 1 ? "s" : ""}`}>
-                      <span className="w-28 text-sm text-gray-600 dark:text-zinc-400 shrink-0">{name}</span>
-                      <div className="flex-1 h-4 rounded-full bg-gray-100 dark:bg-zinc-800 overflow-hidden">
+                      <span className="w-28 text-sm text-muted-foreground shrink-0">{name}</span>
+                      <div className="flex-1 h-4 rounded-full bg-muted overflow-hidden">
                         <div
                           className="h-full rounded-full transition-all duration-500"
                           style={{ width: `${pct}%`, backgroundColor: color }}
                         />
                       </div>
-                      <span className="text-sm font-semibold text-gray-800 dark:text-zinc-200 w-16 text-right shrink-0 tabular-nums">
+                      <span className="text-sm font-semibold text-foreground w-16 text-right shrink-0 tabular-nums">
                         {formatDuration(ms)}
                       </span>
-                      <span className="text-xs text-gray-400 dark:text-zinc-500 w-8 text-right shrink-0 tabular-nums">
+                      <span className="text-xs text-muted-foreground w-8 text-right shrink-0 tabular-nums">
                         {pct}%
                       </span>
                     </div>
@@ -656,7 +659,7 @@ export default function OverviewPage() {
           <section className="flex flex-col gap-3">
             <SectionHeading>
               Maintenance Tickets
-              <span className="ml-2 text-xs font-normal normal-case text-gray-400 dark:text-zinc-600">
+              <span className="ml-2 text-xs font-normal normal-case text-muted-foreground/70">
                 ({reports.length} total)
               </span>
             </SectionHeading>
@@ -665,15 +668,18 @@ export default function OverviewPage() {
               {(["new", "in_progress", "needs_more_time", "fixed"] as const).map((s) => {
                 const count = reports.filter((r) => r.status === s).length;
                 const cfg = {
-                  new:             { label: "New",         color: "bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-zinc-300 border-gray-200 dark:border-zinc-700" },
-                  in_progress:     { label: "In Progress", color: "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800" },
-                  needs_more_time: { label: "Pending",     color: "bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400 border-orange-200 dark:border-orange-800" },
-                  fixed:           { label: "Fixed",       color: "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800" },
+                  new:             { label: "New",         dot: "bg-zinc-400" },
+                  in_progress:     { label: "In Progress", dot: "bg-blue-500" },
+                  needs_more_time: { label: "Pending",     dot: "bg-orange-500" },
+                  fixed:           { label: "Fixed",       dot: "bg-emerald-500" },
                 }[s];
                 return (
-                  <div key={s} className={`flex flex-col items-center py-2.5 rounded-xl border ${cfg.color}`}>
-                    <span className="text-xl font-extrabold leading-none">{count}</span>
-                    <span className="text-[10px] font-medium mt-1 opacity-80">{cfg.label}</span>
+                  <div key={s} className="flex flex-col gap-1 px-3 py-2.5 rounded-xl border bg-card shadow-sm">
+                    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+                      {cfg.label}
+                    </span>
+                    <span className="text-xl font-semibold tabular-nums leading-none text-foreground">{count}</span>
                   </div>
                 );
               })}
@@ -689,7 +695,7 @@ export default function OverviewPage() {
             )}
 
             {activeReports.length === 0 ? (
-              <p className="text-sm text-gray-500 dark:text-zinc-500">No active reports.</p>
+              <p className="text-sm text-muted-foreground">No active reports.</p>
             ) : (
               activeReports.slice(0, 5).map((r) => <CompactReportCard key={r.id} report={r} />)
             )}
@@ -715,15 +721,15 @@ export default function OverviewPage() {
           </div>
           <div className="flex items-center gap-2">
             <ExportBtn onClick={exportCostChart} />
-            <div className="flex rounded-md border border-gray-200 dark:border-zinc-700 overflow-hidden">
+            <div className="inline-flex items-center rounded-lg bg-muted p-1 gap-0.5">
               {COST_PERIODS.map((p) => (
                 <button
                   key={p.label}
                   onClick={() => setCostPeriod(p)}
                   className={`px-3 py-1 text-sm transition-colors ${
                     costPeriod.label === p.label
-                      ? "bg-gray-900 dark:bg-zinc-100 text-white dark:text-zinc-900 font-medium"
-                      : "bg-white dark:bg-zinc-900 text-gray-600 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800"
+                      ? "rounded-md bg-background text-foreground shadow-sm font-medium"
+                      : "rounded-md text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   {p.label}
@@ -732,13 +738,13 @@ export default function OverviewPage() {
             </div>
           </div>
         </div>
-        <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm p-4">
+        <div className="rounded-xl border border-border bg-card shadow-sm p-4">
           {machines.length === 0 ? (
-            <p className="text-sm text-gray-400 dark:text-zinc-500 text-center py-8">No machine data available.</p>
+            <p className="text-sm text-muted-foreground text-center py-8">No machine data available.</p>
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <LineChart data={costData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={ct.grid} />
                 <XAxis
                   dataKey="date"
                   tick={{ fontSize: 11, fill: "#9ca3af" }}
@@ -755,8 +761,8 @@ export default function OverviewPage() {
                 />
                 <Tooltip
                   formatter={(value: number) => [`€${value.toFixed(2)}`, "Cost"]}
-                  contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e5e7eb" }}
-                  cursor={{ stroke: "#e5e7eb" }}
+                  {...ct.tooltip}
+                  cursor={{ stroke: ct.cursorStroke }}
                 />
                 <Line
                   type="monotone"

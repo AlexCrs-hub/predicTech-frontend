@@ -7,7 +7,7 @@ interface BarConsumptionChartProps {
 
 export default function BarConsumptionChart({ title, data }: BarConsumptionChartProps) {
     return (
-        <div className="w-full max-w-3xl mx-auto bg-white dark:bg-zinc-900 rounded-lg shadow-md p-4">
+        <div className="w-full max-w-3xl mx-auto bg-card rounded-lg shadow-md p-4">
             <h3 className="text-lg font-semibold mb-4 text-predic">{title}</h3>
             <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={data}>

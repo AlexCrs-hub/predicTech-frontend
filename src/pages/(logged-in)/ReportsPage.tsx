@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { fetchAllMachines } from "@/lib/api/machineApi";
-import { Button } from "@/lib/components/ui/button";
+import { primaryButtonClass, secondaryButtonClass } from "@/lib/components/ui/fieldStyles";
 import { CheckCircle } from "lucide-react";
 
 const ISSUE_TYPES = ["Hardware", "Software", "Safety", "Performance", "Other"] as const;
@@ -64,30 +64,30 @@ export default function ReportsPage() {
           <p className="text-sm text-muted-foreground">
             Your issue report has been logged. The team will review it shortly.
           </p>
-          <Button variant="outline" onClick={handleReset}>Submit another</Button>
+          <button type="button" onClick={handleReset} className={secondaryButtonClass}>Submit another</button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex w-full justify-center pt-8 px-4">
+    <div className="w-full max-w-2xl mx-auto p-4 sm:p-6 flex flex-col gap-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Report an issue</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Use this form to report a problem, fault, or safety concern.
+        </p>
+      </div>
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-lg flex flex-col gap-5"
+        className="w-full flex flex-col gap-5 rounded-xl border border-border bg-card shadow-sm p-6"
       >
-        <div>
-          <h1 className="text-2xl font-bold">Report an issue</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Use this form to report a problem, fault, or safety concern.
-          </p>
-        </div>
 
         {/* Machine */}
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium">Machine <span className="text-muted-foreground font-normal">(optional)</span></label>
           <select
-            className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            className="rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             value={form.machineId}
             onChange={set("machineId")}
           >
@@ -99,11 +99,11 @@ export default function ReportsPage() {
         </div>
 
         {/* Issue type + Priority in one row */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium">Issue type</label>
             <select
-              className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              className="rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               value={form.issueType}
               onChange={set("issueType")}
             >
@@ -114,7 +114,7 @@ export default function ReportsPage() {
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium">Priority</label>
             <select
-              className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              className="rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               value={form.priority}
               onChange={set("priority")}
             >
@@ -133,7 +133,7 @@ export default function ReportsPage() {
           <label className="text-sm font-medium">Title <span className="text-red-500">*</span></label>
           <input
             type="text"
-            className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            className="rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             placeholder="Short summary of the issue"
             value={form.title}
             onChange={set("title")}
@@ -145,7 +145,7 @@ export default function ReportsPage() {
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium">Description <span className="text-red-500">*</span></label>
           <textarea
-            className="rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+            className="rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
             placeholder="Describe the issue in detail — what happened, when, and any relevant context…"
             rows={5}
             value={form.description}
@@ -153,13 +153,13 @@ export default function ReportsPage() {
           />
         </div>
 
-        <Button
+        <button
           type="submit"
           disabled={!form.title.trim() || !form.description.trim()}
-          className="w-full"
+          className={`${primaryButtonClass} w-full`}
         >
           Submit report
-        </Button>
+        </button>
       </form>
     </div>
   );

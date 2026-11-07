@@ -20,3 +20,10 @@
   background: #1A32F655;
   cursor: pointer
 }
+.dark ::-webkit-scrollbar-track {
+  background: #09090b;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+}

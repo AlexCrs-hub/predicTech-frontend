@@ -69,15 +69,15 @@ export default function MachineMetrics({ id }: MachineMetricsProps) {
         <div className="flex flex-col gap-4">
             {/* period toggle */}
             <div className="flex justify-end">
-                <div className="flex rounded-md border border-gray-200 dark:border-zinc-700 overflow-hidden">
+                <div className="inline-flex items-center rounded-lg bg-muted p-1 gap-0.5">
                     {PERIODS.map((p) => (
                         <button
                             key={p.label}
                             onClick={() => setPeriod(p)}
                             className={`px-3 py-1 text-sm transition-colors ${
                                 period.label === p.label
-                                    ? "bg-gray-900 dark:bg-zinc-100 text-white dark:text-zinc-900 font-medium"
-                                    : "bg-white dark:bg-zinc-900 text-gray-600 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800"
+                                    ? "rounded-md bg-background text-foreground shadow-sm font-medium"
+                                    : "rounded-md text-muted-foreground hover:text-foreground"
                             }`}
                         >
                             {p.label}
